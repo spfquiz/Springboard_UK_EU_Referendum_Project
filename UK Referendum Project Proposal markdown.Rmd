@@ -1,0 +1,90 @@
+---
+title: "Project Proposal - UK 2016 EU Referendum"
+author: "Simon Freeman"
+date: "24 mai 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#   Project Description
+## Introduction
+
+On 23rd June 2016 the UK held a referendum asking the following question: 
+
+"Should the United Kingdom remain a member of the European Union or leave the European Union?"
+
+All British citizens over the age of 18 were allowed to vote unless, like me, they had lived outside of the UK for more than 15 years (including those actively living in the European Union).  Non-British EU citizens living and working in the UK also had no vote.
+
+The overall result was as follows:
+
+|                         | Votes     | Percentage  |
+|:------------------------|----------:|------------:|
+|Leave                    |17 410 742 |51.89%       |
+|Remain                   |16 141 241 |48.11%       |
+|                         |           |             |
+|Valid Votes              |33 551 983 |99.92%       |
+|Invalid Votes            |25 359     |0.08%        |
+|Total Votes              |33 577 342 |100.00%      |
+|                         |           |             |
+|Registered Voters/Turnout|46 500 001 |72.21%       |
+
+This was the first time that a referendum result had gone against the preferred option of the UK Government.
+
+
+##  European Union
+
+The European Union was created following the Treaty of Rome in 1957 by Belgium, France, Italy, Luxembourg, the Netherlands and West Germany with the aim of bringing about a common market and customs union.  An early accomplishment of the EU was the establishment of common agriculture pricing leading to the Common Agriculture Policy.  
+
+The UK first applied to join the Union in 1961, but their application was vetoed by French President, Charles de Gaulle, possibly seeing it as a "Trojan Horse" for unwanted US influence. Following the change of French President at the end of the 1960s, negotiations restarted in 1970 with the UK finally joining the EU in January 1973.
+
+In 1975 there was a UK referendum as to whether the UK should remain in the European Community (now EU).  At that time 67.23% of those voting, voted to Remain.
+
+The European Union is currently made up of 27 member countries   xx of which share a common currency, the Euro.
+
+##  Background to 2016 Referendum
+
+Following the 2007 Recession there has been an increase in Populism throughout Europe, coming with a widespread idea that governments and traditional political parties are unresponsive to the needs of the average citizen.  In many countries this has led both to the creation of new political parties and to a significantly increased vote for Nationalist parties.
+
+The UK Independence Party (UKIP) emerged and started to gain significant momentum.  Knowing that no sitting government had ever lost a referendum (including the recent Scottish Independence vote), the Conservative party made a manifesto commitment ahead of the 2015 general election to hold a referendum on continued EU membership probably in order to take votes from UKIP.  
+
+In the run up to the Referendum both sides (Leave & Remain) tended to appeal to emotion rather than presenting
+the relevant facts and figures of what leaving the EU would mean in practice. (The very opposite of a data-driven decision).  Some three years later, and a couple of months after the original exit date, it is now apparent that the separation from the EU is much messier and complex than anticipated and that there is deadlock both politically and throughout the country as to what would constitute an acceptable exit.
+
+##  Project Proposal
+
+My proposal is to create a dataset including the referendum results, political results from the 2015 elections and socio-economic data from Census, EU and UK National Statistics sources and use it to examine relationships between the Leave Percent and available variables to see what might be significant.
+
+Then I want to use the same data to create a good predictive model for the Leave Percent by voting area. 
+
+**NB** There was a notable regional aspect to the voting with Northern Ireland (44.22% Leave) and Scotland (38.00% Leave).  Due to the consistency of these regional results I've decided to concentrate this study on England & Wales only as here we see the full range of results.  I've also excluded Gibraltar where, maybe not surprisingly for a voting area in continental Europe, the result was 4.09% Leave.
+
+The distribution of the Leave vote can be seen in the following graphic.  (The blank areas generally show remote areas often in National Parks where there is no Postcode data).
+
+```{r Results Plot, echo=FALSE, message=FALSE}
+options(warn=-1)
+library(dplyr)
+library(ggplot2)
+Coord_Lookup <- read.csv("National_Statistics_Postcode_Lookup_UK.csv", sep=";")
+
+Coord_Lookup <- select(filter(Coord_Lookup, (Country.Name == "England") | (Country.Name == "Wales")), 
+                       c("Postcode.1", "Easting", "Northing", "Local.Authority.Code", "Local.Authority.Name"))
+names(Coord_Lookup) <- c("Postcode", "Easting", "Northing", "LA.Code1", "LA.Name1")
+
+ref_leave <- read.csv("EU-referendum-result-data.csv", sep = ";")
+ref_leave <- ref_leave[, c(4:5, 20)]
+names(ref_leave) <- c("LA.Code", "LA.Name", "Leave.Percent")
+
+coord_leave <- left_join(x = Coord_Lookup, y = ref_leave, by = c("LA.Name1" = "LA.Name", "LA.Code1" = "LA.Code"))
+coord_leave <- coord_leave
+# Logic that LA.Code1 doesn't start with N or S  or rather starts with E or W
+
+write.csv(coord_leave, "coord_leave.csv")
+
+ggplot(data = coord_leave, aes(x = Easting, y = Northing, color = Leave.Percent, fill = Leave.Percent)) +
+  geom_point() 
+
+rm("coord_leave")
+options(warn=0)
+```
