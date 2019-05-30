@@ -1,0 +1,464 @@
+---
+title: "Data Cleaning"
+author: "Simon Freeman"
+date: "24 mai 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#   Data Cleaning
+##  Sources and Acknowledgements
+
+The clean referendum dataset comes from a series of individual sources as below.  I would like to acknowledge the sources of each of them for the work they've put in to making these data available.  In particular to John Lees-Miller, Hope Thomas & Andrew Weeks for the work they've done in putting together the EU funding data which can be seen on the myeu.uk website.
+
+
+|   Dataset                                 | Source                                                      |
+|:------------------------------------------|------------------------------------------------------------:|
+|age_group.csv                              |Office for National Statistics: table nomis QS110EW          |
+|disposable_income_per_head.csv             |Office for National Statistics "Regional Gross Disposable Household Income (GDHI) by Local Authority"|
+|economic_activity.csv                      |Office for National Statistics: table nomis QS601EW          |
+|election_results.csv                       |2015 General Election results                                |
+|ethnicity_local_authority.csv              |Office for National Statistics: table nomis LC2205EW         |
+|eu_funding.csv                             |myeu.uk "Stories with Westminster Parliamentary Constituency"|
+|EU-referendum-result-data.csv              |Electoral Commission "EU Referendum Result"                  |
+|highest_qualification.csv                  |Office for National Statistics: table nomis QS501EW          |
+|house_prices.csv                           |Land Registry data.gov.uk "Price paid data YTD"              |
+|National_Statistics_Postcode_Lookup_UK.csv |Camden.gov.uk "National Statistics Postcode Lookup"          |
+|passport_held.csv                          |Office for National Statistics: table nomis QS212EW          |
+|social_grade.csv                           |Office for National Statistics: table nomis QS611EW          |
+
+
+
+##  Overall Methodology
+
+In some cases the data is directly available at the same level as the referendum results, in others I've needed to convert to this level.
+
+In particular this meant that I needed to use a Postcode lookup.  Unfortunately the best dataset I found had some missing Postcodes (despite 500 000 lines) so I decided on an iterative approach.
+
+            1.  If the full postcode was in the lookup use that;
+      Else  2.  Take the final character off the missing postcode and choose the Local Authority with the 
+            highest count for that combination;
+      Else  3.  Take the final two characters off the missing postcode and choose the Local Authority with the 
+            highest count for that combination.
+            
+This works because UK postcodes are very detailed and a full postcode may only apply to 20 houses.  There will almost certainly be a very small amount of missorting, but this shouldn't have any noticeable significance on the cleaned dataframe.
+
+Once the data is all held at the Local Authority level (thus aligned to the Referendum results), the clean dataset is formed by joining the individually cleaned sources together.
+
+##  Specific Cleaning
+### Ethnicity Data
+
+This is a very complex dataset cross-referencing Geography of Birth with Nationality with Ethnic Grouping.  I've reduced the number of groupings to the following and converted them to a percentage of the population:
+
+|   Grouping                      |
+|:--------------------------------|
+|White.British.Percent            |
+|Non.British.White.UKborn.Percent |
+|British.Non.White.UKborn.Percent |
+|EUborn.Immigrants.Percent        |
+|RoW.Immigrants.Percent           |
+
+**NB** RoW means "Rest of the World"
+
+Why these groupings?  Was the referendum affected by the number of immigrants from the EU, the number of immigrants from elsewhere, or the number of people who are not "White"?  Is it different for second (or more) generation immigrants?
+
+```{r Clean Ethnicity, echo=FALSE, message=FALSE}
+options(warn=-1)
+library(dplyr)
+library(ggplot2)
+
+ethnicity <- read.csv("ethnicity_local_authority.csv", dec=",")
+
+ethnicity <- ethnicity[,c(1:4, 6, 25:30, 88:93, 106:111)]
+
+names(ethnicity) <- c("Ethnicity.Year", "LA.Name", "LA.Code", "Ethnicity.Total", "White.British", "NBWUK1", "NBWUK2", 
+                      "BNWUK1", "BNWUK2", "BNWUK3", "BNWUK4", "NBEU1", "NBEU2", "NBEU3", "NBEU4", "NBEU5", "NBEU6", 
+                      "NBEU7", "NBEU8", "NBEU9", "NBEU10", "NBEU11", "NBEU12")
+ethnicity <- mutate(ethnicity, Non.British.White.UKborn = (NBWUK1 + NBWUK2), 
+       British.Non.White.UKborn = (BNWUK1 + BNWUK2 + BNWUK3 + BNWUK4),
+       EUborn.Immigrants = (NBEU1 + NBEU2 + NBEU3 + NBEU4 + NBEU5 + NBEU6 + NBEU7 + NBEU8 + NBEU9 + NBEU10 + NBEU11 + NBEU12))
+ethnicity <- mutate(ethnicity, RoW.Immigrants = (Ethnicity.Total - White.British - Non.British.White.UKborn - British.Non.White.UKborn 
+                                    - EUborn.Immigrants))
+ethnicity <- mutate(ethnicity, White.British.Percent = (100 * White.British / Ethnicity.Total),
+                    Non.British.White.UKborn.Percent = (100 * Non.British.White.UKborn / Ethnicity.Total), 
+                    British.Non.White.UKborn.Percent = (100 * British.Non.White.UKborn / Ethnicity.Total), 
+                    EUborn.Immigrants.Percent = (100 * EUborn.Immigrants / Ethnicity.Total),
+                    RoW.Immigrants.Percent = (100 * RoW.Immigrants / Ethnicity.Total))
+
+ethnicity <- ethnicity[,c(2:3, 28:32)]
+
+write.csv(ethnicity, "ethnicity_clean.csv")
+rm("ethnicity")
+
+options(warn=0)
+```
+
+### Postcode Data
+
+As described above I've created 3 lookup datasets for the full postcode, for the postcode minus the last character, and the postcode minus the last two characters.
+
+```{r Clean Postcode Lookup, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+##  Create Lookup from Postcode to Local Authority.
+##  This doesn't appear to be complete when matched with the EU funding dataset.
+##  Therefore I'm creating lookups on Postcode, on Postcode with the last character removed and on Postcode
+##  with the last two characters removed.
+
+Postcode_Lookup <- read.csv("National_Statistics_Postcode_Lookup_UK.csv", sep=";")
+
+Postcode_Lookup <- Postcode_Lookup[,c("Postcode.1", "Local.Authority.Code", "Local.Authority.Name")]
+names(Postcode_Lookup) <- c("Postcode", "LA.Code1", "LA.Name1")
+
+##  Remove spaces from Postcode to get consistent format for lookup
+Postcode_Lookup$Postcode <- gsub(" ", "", Postcode_Lookup$Postcode, fixed = TRUE)
+write.csv(Postcode_Lookup, "postcode_lookup.csv")
+
+##  Create lookup for Postcode with last character removed.  If there are multiple local authorities, take
+##  the one which is associated with most Postcodes
+Postcode_Lookup1 <- mutate(Postcode_Lookup, Postcode.Gp1 = substr(Postcode, 1, (nchar(Postcode) - 1)))
+Postcode_Lookup1 <- group_by(Postcode_Lookup1, Postcode.Gp1, LA.Code1, LA.Name1)
+Postcode_Lookup1 <- summarise(Postcode_Lookup1, PC.Count = n())
+Postcode_Lookup1 <- Postcode_Lookup1[order(Postcode_Lookup1$Postcode.Gp1, -abs(Postcode_Lookup1$PC.Count)), ]
+Postcode_Lookup1 <- Postcode_Lookup1[ !duplicated(Postcode_Lookup1$Postcode.Gp1), ]
+Postcode_Lookup1 <- select(Postcode_Lookup1, Postcode.Gp1, LA.Code1, LA.Name1)
+
+write.csv(Postcode_Lookup1, "postcode_lookup1.csv")
+
+##  Create lookup for Postcode with 2 last characters removed.  If there are multiple local authorities, take
+##  the one which is associated with most Postcodes
+Postcode_Lookup2 <- mutate(Postcode_Lookup1, Postcode.Gp2 = substr(Postcode.Gp1, 1, (nchar(Postcode.Gp1) - 1)))
+Postcode_Lookup2 <- group_by(Postcode_Lookup2, Postcode.Gp2, LA.Code1, LA.Name1)
+Postcode_Lookup2 <- summarise(Postcode_Lookup2, PC.Count = n())
+Postcode_Lookup2 <- Postcode_Lookup2[order(Postcode_Lookup2$Postcode.Gp2, -abs(Postcode_Lookup2$PC.Count)), ]
+Postcode_Lookup2 <- Postcode_Lookup2[ !duplicated(Postcode_Lookup2$Postcode.Gp2), ]
+Postcode_Lookup2 <- select(Postcode_Lookup2, Postcode.Gp2, LA.Code1, LA.Name1)
+
+write.csv(Postcode_Lookup2, "postcode_lookup2.csv")
+options(warn=0)
+```
+
+### EU Funding Data
+
+I've taken the EU Funding at a Postcode level, converted to Millions of GB Pounds, and applied the three postcode lookup tables in turn only using a less detailed one if there's no match on the previous level in order to get the Local Authority for each line.  I've then summarised at the Local Authority level.
+
+```{r EU Funding, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+##  Clean and group EU Funding data, match with the Postcode Lookups and choose the non-NA Local Authority
+##  coming from the most detailed postcode
+
+eu_funding_lines <- read.csv("eu_funding.csv", sep=";")
+
+eu_funding_lines <- eu_funding_lines[,c("postcode", "eu_contribution_gbp")]
+names(eu_funding_lines) <- c("Postcode", "EU.Funding.GBP")
+
+eu_funding_lines[is.na(eu_funding_lines)] <- 0
+
+##  Remove spaces from Postcode to get consistent format for lookup and load local authority
+eu_funding_lines$Postcode <- gsub(" ", "", eu_funding_lines$Postcode, fixed = TRUE)
+eu_funding_lines <- mutate(eu_funding_lines, Postcode.Gp1 = substr(Postcode, 1, (nchar(Postcode) - 1)))
+eu_funding_lines <- mutate(eu_funding_lines, Postcode.Gp2 = substr(Postcode.Gp1, 1, (nchar(Postcode.Gp1) - 1)))
+
+eu_funding_lines <- left_join(x = eu_funding_lines, y = Postcode_Lookup, by = c("Postcode" = "Postcode"))
+eu_funding_lines <- left_join(x = eu_funding_lines, y = Postcode_Lookup1, by = c("Postcode.Gp1" = "Postcode.Gp1"))
+eu_funding_lines <- left_join(x = eu_funding_lines, y = Postcode_Lookup2, by = c("Postcode.Gp2" = "Postcode.Gp2"))
+
+##  Choose Local Authority from "best" postcode group
+eu_funding_lines <- mutate(eu_funding_lines, LA.Code = as.factor(ifelse(is.na(LA.Code1.x), 
+                                                              ifelse(is.na(LA.Code1.y), as.character(LA.Code1), as.character(LA.Code1.y)),
+                                                              as.character(LA.Code1))))
+eu_funding_lines <- mutate(eu_funding_lines, LA.Name = as.factor(ifelse(is.na(LA.Name1.x), 
+                                                              ifelse(is.na(LA.Name1.y), as.character(LA.Name1), as.character(LA.Name1.y)),
+                                                              as.character(LA.Name1))))
+
+##  Summarise EU funding by Local Authority
+eu_funding_clean <- group_by(eu_funding_lines, LA.Code, LA.Name)
+eu_funding_clean <- summarise(eu_funding_clean, Total.EU.Funding.Millions = sum(EU.Funding.GBP / 1000000))
+
+
+write.csv(eu_funding_clean, "eu_funding_clean.csv")
+rm("eu_funding_lines")
+rm("eu_funding_clean")
+
+
+options(warn=0)
+```
+### House Price Data
+
+I've taken the House Price at a Postcode level, converted to Thousands of GB Pounds, and applied the three postcode lookup tables in turn only using a less detailed one if there's no match on the previous level in order to get the Local Authority for each line. I've also excluded Property Type = "O" (Other) from the dataset as this could be a very different type of property (eg Commercial Premises) which could distort the other data.  I've then summarised at the Local Authority level.
+
+I decided to combine the Residential Property Types into one as my intention was to concentrate on the overall cost of living in an area rather than on the mix of Houses vs Flats - my assumption being that the market would decide that mix.
+
+```{r Clean House Price, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean and group House Price data, match with the Postcode Lookups and choose the non-NA Local Authority
+##  coming from the most detailed postcode
+
+house_price_lines <- read.csv("house_prices.csv", header = FALSE)
+
+##  Remove O = "Other" from property type
+house_price_lines <- select(filter(house_price_lines, V5 != "O"),c(V2, V4, V5))
+
+names(house_price_lines) <- c("Property.Price", "Postcode", "Property.Type")
+
+
+##  Remove spaces from Postcode to get consistent format for lookup and load local authority
+house_price_lines$Postcode <- gsub(" ", "", house_price_lines$Postcode, fixed = TRUE)
+house_price_lines <- mutate(house_price_lines, Postcode.Gp1 = substr(Postcode, 1, (nchar(Postcode) - 1)))
+house_price_lines <- mutate(house_price_lines, Postcode.Gp2 = substr(Postcode.Gp1, 1, (nchar(Postcode.Gp1) - 1)))
+
+house_price_lines <- left_join(x = house_price_lines, y = Postcode_Lookup, by = c("Postcode" = "Postcode"))
+house_price_lines <- left_join(x = house_price_lines, y = Postcode_Lookup1, by = c("Postcode.Gp1" = "Postcode.Gp1"))
+house_price_lines <- left_join(x = house_price_lines, y = Postcode_Lookup2, by = c("Postcode.Gp2" = "Postcode.Gp2"))
+
+##  Choose Local Authority from "best" postcode group
+house_price_lines <- mutate(house_price_lines, LA.Code = as.factor(ifelse(is.na(LA.Code1.x), 
+                                                                        ifelse(is.na(LA.Code1.y), as.character(LA.Code1), as.character(LA.Code1.y)),
+                                                                        as.character(LA.Code1))))
+house_price_lines <- mutate(house_price_lines, LA.Name = as.factor(ifelse(is.na(LA.Name1.x), 
+                                                                        ifelse(is.na(LA.Name1.y), as.character(LA.Name1), as.character(LA.Name1.y)),
+                                                                        as.character(LA.Name1))))
+
+##  Summarise Housing by Local Authority
+house_price_clean <- group_by(house_price_lines, LA.Code, LA.Name)
+house_price_clean <- summarise(house_price_clean, Avg.Property.Price.kGBP = mean(Property.Price) / 1000)
+
+
+write.csv(house_price_clean, "house_price_clean.csv")
+rm("house_price_lines")
+rm("house_price_clean")
+rm("Postcode_Lookup")
+rm("Postcode_Lookup1")
+rm("Postcode_Lookup2")
+
+options(warn=0)
+```
+### Passport Ownership
+
+From a simpler dataset I've summarised the percentages of people with a British Passport and No Passport.  With over 54 million visits into the EU from the UK in 2017 (making it the most popular destination for UK travel) which would become more complicated after a UK exit, I wanted to see if the lack of a passport might influence the results.
+
+```{r Clean Passport, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean Passport ownership
+passport <- read.csv("passport_held.csv", sep=";")
+
+passport <- mutate(passport, Total.Pop = (Europe..Total + Africa..Total + Middle.East.and.Asia..Total +
+                                            The.Americas.and.the.Caribbean..Total + Antarctica.and.Oceania..Total +
+                                            British.Overseas.Territories + No.passport.held))
+passport <- mutate(passport, British.Passport.Percent = (100 * Europe..United.Kingdom / Total.Pop))
+passport <- mutate(passport, No.Passport.Percent = (100 * No.passport.held / Total.Pop))
+passport <- mutate(passport, Passport.Percent = (100 - No.Passport.Percent))
+
+passport <- passport[, c(1:2, 12:14)]
+names(passport) <- c("LA.Name", "LA.Code", "British.Passport.Percent", "No.Passport.Percent", "Passport.Percent")
+
+write.csv(passport, "passport_clean.csv")
+rm("passport")
+options(warn=0)
+```
+### Education
+
+Is there a link between education and voting patterns?  Although both Remain and Leave campaigns were led by educated people there has been some speculation that there may be some correlation.  I grouped the dataset into the following and created percentages:
+
+|   Grouping                      |  Description 
+|:--------------------------------|:----------------------------------|
+|Degree.Percent                   |University educated                |
+|Formal.Education.to.16.Percent   |Left school at minimum legal age   |
+
+```{r Clean Education, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean highest qualification
+education <- read.csv("highest_qualification.csv", sep=";")
+
+education <- mutate(education, Total.Pop = (No.qualifications + Level.1.qualifications + Level.2.qualifications +
+                                            Apprenticeship + Level.3.qualifications + 
+                                            Level.4.qualifications.and.above + Other.qualifications))
+education <- mutate(education, Degree.Percent = (100 * Level.4.qualifications.and.above / Total.Pop))
+education <- mutate(education, Formal.Education.to.16.Percent = (100 * (No.qualifications + Level.1.qualifications + Level.2.qualifications +
+                                                                   Apprenticeship) / Total.Pop))
+
+education <- education[, c(1:2, 11:12)]
+names(education) <- c( "LA.Name", "LA.Code", "Degree.Percent", "Formal.Education.to.16.Percent")
+
+write.csv(education, "education_clean.csv")
+rm("education")
+options(warn=0)
+```
+### Election Results by Political Party
+
+This data comes from the UK general election in 2015, the year before the referendum and I've loaded it without making any changes in R.  I wanted to know if there were any political party links to the voting outside of those of nationalist parties (mostly UKIP) where a correlation is expected.
+
+```{r Clean Election Results, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean election results by party
+election <- read.csv("election_results.csv", sep=";")
+
+election <- election[, c(1:2, 8:12)]
+names(election) <- c( "LA.Code", "LA.Name", "Conservative.Percent", "Labour.Percent",
+                      "LibDem.and.Green.Percent", "Nationalist.Percent", "Other.Party.Percent")
+
+write.csv(election, "election_results_clean.csv")
+rm("election")
+options(warn=0)
+```
+### Age Demographics
+
+After the referendum there was speculation that the Leave vote was very high amongst the older voters and a perceived outcry from younger voters that their desire to remain in the EU was not being heard.  What does the data say?  In this case the data didn't require any extra manipulations.
+
+```{r Clean Age, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean age demographics
+age <- read.csv("age_group.csv", sep=";")
+
+age <- age[, c(1:2, 9:14)]
+names(age) <- c( "LA.Name", "LA.Code", "Age.16.to.24.Percent", "Age.25.to.34.Percent", "Age.35.to.54.Percent", 
+                 "Age.55.to.64.Percent", "Age.65.to.74.Percent", "Age.75.plus.Percent")
+
+write.csv(age, "age_group_clean.csv")
+rm("age")
+options(warn=0)
+```
+### Social Grouping
+
+Does the type of social grading (largely based on current or previous employment within a household) influence voting patterns?  As the group names are not self-evident I've included a description.  No cleaning was necessary on this data outside of giving consistent names to the fields.
+
+| Grouping  |  Description                                                                |% UK Population|
+|:----------|:----------------------------------------------------------------------------|--------------:|
+|AB.Percent |Higher & intermediate managerial, administrative, professional jobs          |22.17          |
+|C1.Percent |Supervisory, clerical & junior managerial, administrative, professional jobs |30.84          |
+|C2.Percent |Skilled manual occupations                                                   |20.94          |
+|DE.Percent |Semi-skilled & unskilled manual occupations, Unemployed and lowest grade jobs|26.05          |
+
+```{r Clean Social Grouping, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean social grouping
+social <- read.csv("social_grade.csv", sep=";")
+
+social <- social[, c(1:2, 8:11)]
+names(social) <- c( "LA.Name", "LA.Code", "AB.Percent", "C1.Percent", "C2.Percent", "DE.Percent")
+
+write.csv(social, "social_grade_clean.csv")
+rm("social")
+options(warn=0)
+```
+### Economic Activity
+
+The EU is the biggest export market for UK businesses and under a Remain vote would continue to have no trade tarifs.  Did this influence the voting patterns for people in employment or employers?  Were the unemployed threatened by the free movement of people within the EU, causing more competition for jobs?
+
+I've taken the original data set and reduced the number of groups on the basis that it doesn't make any logical difference if someone works Full time or Part time or if someone who is self-employed also employs others or not.  A percentage has then been assigned to each group.
+
+|   Grouping                      |  Description                      |
+|:--------------------------------|:----------------------------------|
+|Employee.Percent                 |Both Full and Part time            |
+|SelfEmployed.Percent             |Both with and without Employees    |
+|Unemployed.Percent               |All unemployed                     |
+|Student.Percent                  |All students                       |
+|Retired.Percent                  |All retired                        |
+|Other.Activity.Percent           |Homemakers, Longterm Sick and Other|
+
+```{r Clean Economic Activity, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean Economic Activity
+economic <- read.csv("economic_activity.csv", sep=";")
+
+names(economic) <- c("LA.Name", "LA.Code", "Total", "Employee.PT", "Employee.FT", "Employer.PT", 
+                     "Employer.FT", "SelfEmployed.PT", "SelfEmployed.FT", "Unemployed", "Student.FT",
+                     "Retired", "Student.inactive", "Home", "Sick", "Other")
+
+economic <- mutate(economic, Employee.Percent = (100 * (Employee.PT + Employee.FT) / Total))
+economic <- mutate(economic, SelfEmployed.Percent = (100 * (Employer.PT + Employer.FT + SelfEmployed.PT
+                                                            + SelfEmployed.FT) / Total))
+economic <- mutate(economic, Unemployed.Percent = (100 * (Unemployed) / Total))
+economic <- mutate(economic, Student.Percent = (100 * (Student.FT + Student.inactive) / Total))
+economic <- mutate(economic, Retired.Percent = (100 * (Retired) / Total))
+economic <- mutate(economic, Other.Activity.Percent = (100 * (Home + Sick + Other) / Total))
+
+economic <- economic[, c(1:2, 17:22)]
+
+write.csv(economic, "economic_activity_clean.csv")
+rm("economic")
+options(warn=0)
+```
+### Income
+
+I've taken this data as supplied except a conversion to Thousands of GB Pounds.
+
+```{r Clean Income, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean average income data
+income <- read.csv("disposable_income_per_head.csv", sep = ";")
+
+names(income) <- c( "Region.Name", "LA.Code", "LA.Name", "Income.GBP")
+income <- mutate(income, Avg.Income.kGBP = (Income.GBP / 1000))
+
+income <- income[, c(2:3, 5)]
+
+write.csv(income, "income_clean.csv")
+rm("income")
+options(warn=0)
+``` 
+##  Final Dataset
+
+In order to create my clean dataset I've taken the Referendum results file, selected the columns to keep and renamed them for consistency.  I've then made left_joins with the other data matching on Local Authority Code and Local Authority Name.
+
+The structure of the new dataset is as follows:
+```{r Make Clean Referendum dataset, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean Brexit results and consolidate the other data tables
+referendum <- read.csv("EU-referendum-result-data.csv", sep = ";")
+
+referendum <- referendum[, c(2:5, 9:10, 12:14, 19:21)]
+names(referendum) <- c("Region.Code", "Region.Name", "LA.Code", "LA.Name", "Turnout.Percent", "Total.Votes", 
+                     "Remain", "Leave", "Rejected", "Remain.Percent", "Leave.Percent", "Rejected.Percent")
+
+age <- read.csv("age_group_clean.csv")
+referendum <- left_join(x = referendum, y = age, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("age")
+
+economic <- read.csv("economic_activity_clean.csv")
+referendum <- left_join(x = referendum, y = economic, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("economic")
+
+education <- read.csv("education_clean.csv")
+referendum <- left_join(x = referendum, y = education, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("education")
+
+election <- read.csv("election_results_clean.csv")
+referendum <- left_join(x = referendum, y = election, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("election")
+
+ethnicity <- read.csv("ethnicity_clean.csv")
+referendum <- left_join(x = referendum, y = ethnicity, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("ethnicity")
+
+funding <- read.csv("eu_funding_clean.csv")
+referendum <- left_join(x = referendum, y = funding, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("funding")
+
+house <- read.csv("house_price_clean.csv")
+referendum <- left_join(x = referendum, y = house, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("house")
+
+income <- read.csv("income_clean.csv")
+referendum <- left_join(x = referendum, y = income, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("income")
+
+passport <- read.csv("passport_clean.csv")
+referendum <- left_join(x = referendum, y = passport, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("passport")
+
+social <- read.csv("social_grade_clean.csv")
+referendum <- left_join(x = referendum, y = social, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("social")
+
+referendum <- referendum[, c(1:12, 14:19, 21:26, 28:29, 31:35, 37:41, 43, 45, 47, 49:51, 53:56)]
+
+write.csv(referendum, "referendum_clean.csv")
+str(referendum)
+rm("referendum")
+options(warn=0)
+```
