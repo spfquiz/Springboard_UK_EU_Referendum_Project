@@ -1,0 +1,501 @@
+---
+title: "Data Analysis - UK 2016 EU Referendum"
+author: "Simon Freeman"
+date: "4 juin 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+##  Introductory Graphics
+### Distribution of Leave Percentage
+
+As can be seen here there is a main group which is roughly normally distributed with a small cluster of low Leave Percentages.  Where is this cluster coming from?
+
+```{r Set Up, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(GGally)
+
+setwd("~/Data/brexit")
+
+referendum <- read.csv("referendum_clean.csv")
+
+ggplot(data = referendum, aes(x = Leave.Percent)) + 
+  geom_histogram(aes(y =..density..), binwidth = 2, col = "red", fill ="lightblue") +
+  geom_density(col = 2, size = 1) +
+  labs(title = "Distribution of Leave Percentage in Local Authorities")
+
+sum_ref <- as.matrix(summary(referendum$Leave.Percent))
+knitr::kable(t(as.matrix(summary(referendum$Leave.Percent))), caption = "Summary Stats for Referendum Leave Percentages")
+
+options(warn=0)
+```
+
+### Regional View of Results
+
+As a reminder, when setting up this dataset I decided to exclude Northern Ireland and Scotland (and Gibraltar) because their results appeared to be more heavily influenced by their regional geography more than any other factor.
+
+```{r Regional View, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ggplot(data = referendum, aes(x = Region.Name, y = Leave.Percent, color = Region.Name, fill = Region.Name)) +
+  stat_summary(fun.data = mean_sdl, col = "black") +
+  stat_summary(geom = "errorbar", fun.data = mean_sdl, col = "black", width = 0.2) +
+  geom_jitter(width = 0.2, aes(color = Region.Name, fill = Region.Name)) +
+  labs(title = "Distribution of Leave Percentage by Region") +
+  theme(axis.text.x = element_text(angle = 30))
+
+options(warn=0)
+```
+
+* London has the lowest average Leave vote, but also the widest distribution of results and is most represented in the cluster of low Leave Percentages
+* West Midlands has the highest average Leave vote and only one Local Authority (Warwick) where the result was to remain
+* North East has the smallest range between lowest and highest results, also with only one Local Authority (Newcastle upon Tyne) where the result was to remain
+* Wales has the tightest grouping of results, but one Local Authority (Cardiff) outside of the error bars
+* There are two Local Authorities with results over the error bar range - Boston in East and Havering in London
+* There are a greater number of Local Authorities with results under the error bar range, including Cambridge, Oxford, Brighton, Bristol, Cardiff, Manchester, York, Liverpool.  This list puts one in mind of universities.
+
+Assuming that local authorities with universities would have a higher percentage of students we can check the "university" effect in the following graphic.
+
+```{r Regional Student View, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ggplot(data = referendum, aes(x = Region.Name, y = Leave.Percent, color = Student.Percent)) +
+  stat_summary(fun.data = mean_sdl, col = "black") +
+  stat_summary(geom = "errorbar", fun.data = mean_sdl, col = "black", width = 0.2) +
+  scale_colour_gradient2(low="#22FF00", mid="white", high="#FF0000", midpoint=8.8) +
+  geom_jitter(width = 0.2) +
+  labs(title = "Distribution of Leave Percentage by Region") +
+  theme(axis.text.x = element_text(angle = 30))
+
+options(warn=0)
+```
+
+This does indeed show a tendency for local authorities with higher percentages of students to be at the lower end of the results for each Region.
+
+
+### Correlation to Leave Percent
+
+It can never be stated too many times that "Correlation is not Causation".  That is to say that a strong correlation between two variables in a dataset does not necessarily mean that one has caused the other - that might be the case or equally it could be a coincidence.  Sometimes Correlation can also strongly depend on outlying data points having undue influence on the overall result.
+
+```{r Leave Correlation, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+##  Correlation against Leave Percent
+referendum.corr1 <- referendum[, c(6, 12, 14:47)]
+ref_corr <- as.data.frame(cor(referendum.corr1))
+
+ref_corr_leave <- ref_corr[2, ]
+ref_corr_leave <- gather(data = ref_corr_leave, key = "Variable", value = "Correlation")
+ref_corr_leave <- mutate(ref_corr_leave, Abs.Correlation = abs(Correlation))
+
+ggplot(data = ref_corr_leave, aes(y = Variable, x = Correlation, color = Correlation)) +
+  scale_colour_gradient2(low="#FF0000", mid="white", high="#22FF00", midpoint=0) +
+  geom_point() +
+  labs(title = "Correlation to Leave Percentage for each variable")
+
+options(warn=0)
+```
+
+####  Highest Leave Correlations
+
+
+```{r Top Leave Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ref_corr_leave <- ref_corr_leave[order(-ref_corr_leave$Abs.Correlation),]
+knitr::kable(head(ref_corr_leave[, c("Variable", "Correlation")], 17), row.names = FALSE)
+             
+
+options(warn=0)
+```
+
+
+```{r Correlations Between Variables, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ref_corr$Variable1 <- rownames(ref_corr)
+ref_corr <- gather(data = ref_corr, -Variable1, key = "Variable", value = "Correlation")
+ref_corr <- mutate(ref_corr, Abs.Correlation = abs(Correlation))
+ref_corr_high <- select(filter(ref_corr, (Abs.Correlation >= 0.8) & (Abs.Correlation < 1)),c(Variable1, Variable, Correlation, Abs.Correlation))
+
+options(warn=0)
+```
+
+
+```{r Turnout Correlation, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+##  Correlation against Turnout Percent
+
+ref_corr1 <- as.data.frame(cor(referendum.corr1))
+ref_corr_turnout <- ref_corr1[1, ]
+ref_corr_turnout <- gather(data = ref_corr_turnout, key = "Variable", value = "Correlation")
+ref_corr_turnout <- mutate(ref_corr_turnout, Abs.Correlation = abs(Correlation))
+
+options(warn=0)
+```
+
+
+
+#   Detailed Visuals by Variable Category
+##  Age Demographics
+
+PROPOSITION:  People over a certain age voted heavily to leave and younger people voted to remain.
+
+####  Correlation
+
+```{r Age Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+age <- referendum[, c(12, 14:19)]
+names(age) <- c( "Leave.Percent", "16.to.24", "25.to.34", "35.to.54", "55.to.64", "65.to.74", "75.plus")
+ggpairs(age)
+
+options(warn=0)
+```
+
+This does show that correlation for percentage of younger voters is towards Remain and older voters is towards Leave.  But is this significant?  Let's consider two groups that have been talked about - one that remembers UK prior to EU membership and one which grew up post-Thatcher.
+
+```{r Age Plot, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+age <- mutate(age, Under.34.Percent = (`16.to.24` + `25.to.34`), Over.55.Percent = (`55.to.64` + `65.to.74` +
+                                                                                      `75.plus`))
+age <- age[, c(1, 8:9)]
+cor_age <- cor(age)
+knitr::kable(cor_age, caption ="Correlation Table")
+age <- gather(data = age, key = "Age.Group", value = "Age.Group.Percent", Under.34.Percent, Over.55.Percent)
+
+ggplot(data = age, aes(x = Age.Group.Percent, y = Leave.Percent, color = Age.Group)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  facet_grid(cols = vars(Age.Group))
+
+options(warn=0)
+```
+
+This continues to show a general tendance towards the Proposition BUT not very convincing.  Internet research suggests a proposition:  there was a lower turnout in the younger demographics than in the older demographics.
+
+####  Correlation between Age Demographics and Turnout
+
+```{r Age Correlations to Turnout, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ref_corr_turnout_age <- select(filter(ref_corr_turnout, substr(Variable, 1, 3) == "Age"),c(Variable, Correlation))
+knitr::kable(ref_corr_turnout_age)
+rm("age")
+
+options(warn=0)
+```
+
+Although only indicative this shows that the larger the population of over 55s the higher the turnout and the the larger the population of under 34s the lower the turnout which is in line with the proposition.
+
+
+
+##  Professional Activity
+
+PROPOSITION:  
+
+1.  Students voted Remain and Retired people voted Leave.
+
+2.  The Unemployed wanted to stop EU immigration to increase the jobs available for UK nationals.
+
+```{r Activity Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+activity1 <- referendum[, c(12, 22:24)]
+activity2 <- referendum[, c(12, 20:25)]
+names(activity2) <- c( "Leave", "Employee", "SelfEmployed", "Unemployed", "Student", "Retired", "Other")
+ggpairs(activity2)
+
+activity1 <- gather(data = activity1, key = "Activity.Group", value = "Activity.Group.Percent", 
+                   Unemployed.Percent, Student.Percent, Retired.Percent)
+
+ggplot(data = activity1, aes(x = Activity.Group.Percent, y = Leave.Percent, 
+                            color = Activity.Group, group = Activity.Group )) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  facet_grid(rows = vars(Activity.Group))
+
+rm("activity1")
+rm("activity2")
+options(warn=0)
+```
+
+
+
+##  Education Levels
+
+PROPOSITION:  
+
+1.  Higher education levels correspond to a lower Leave vote (and vice versa).
+
+
+```{r Education Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+education <- referendum[, c(12, 26:27)]
+ggpairs(education)
+
+education <- gather(data = education, key = "Activity.Group", value = "Activity.Group.Percent", 
+                   Degree.Percent, Formal.Education.to.16.Percent)
+
+ggplot(data = education, aes(x = Activity.Group.Percent, y = Leave.Percent, 
+                            color = Activity.Group)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  facet_grid(cols = vars(Activity.Group))
+
+rm("education")
+options(warn=0)
+```
+
+There is a strong correlation between the percentages of high (Degree) or low (<16) education within a population and the percentage for Remain and Leave respectively.
+
+Note that as the correlation between Degree.Percent and Formal.Education.to.16.Percent is very strongly negative, it's unlikely that both will need to be included in a prediction model.
+
+
+
+##  Political Party Support
+
+PROPOSITION:  
+
+1.  The only relevant link to political party support is for the Nationalist Parties (mainly UKIP).
+
+
+```{r Politics Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+politics <- referendum[, c(12, 28:32)]
+names(politics) <- c( "Leave", "Conservative", "Labour", "Lib.Green", "Nationalist", "Other")
+ggpairs(politics)
+
+politics <- gather(data = politics, key = "Activity.Group", value = "Activity.Group.Percent", 
+                    Conservative, Labour, Lib.Green, Nationalist, Other)
+
+ggplot(data = politics, aes(x = Activity.Group.Percent, y = Leave, 
+                             color = Activity.Group)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  facet_grid(rows = vars(Activity.Group))
+
+options(warn=0)
+```
+
+Higher votes for a Nationalist Party (mainly UK Independence Party) preceeding the referendum is strongly correlated to a higher Leave vote.  Otherwise the links are not particularly strong.
+
+Note that as the correlation between Conservative.Percent and Labour.Percent is fairly strongly negative, it's less likely that both will need to be included in a prediction model.
+
+
+
+##  Ethnicity
+
+PROPOSITION:  
+
+One of the main messages preceeding the referendum was the desire to reduce EU immigration.
+
+1.  Higher levels of EU immigrants in an area increases the Leave vote.
+
+2.  Higher levels of more obvious immigrants (Rest of World immigrants will generally look different) increases the Leave vote.
+
+
+```{r Ethnicity Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ethnicity <- referendum[, c(12, 33:37)]
+names(ethnicity) <- c( "Leave", "White.Brit", "NonBr.Wh.UKborn", "NonWh.UKborn", "EU.Immig", "RoW.Immig")
+ggpairs(ethnicity)
+
+options(warn=0) 
+```
+
+Although these correlation are not high they are interesting in that the only grouping with a positive correlation to the Leave Percent is White British.  That is to say that the higher the percentage of immigrants or descendants of immigrants the greater the tendency to a lower Leave vote.  Interestingly this is much the same tendency whether these groups were able to vote or not.
+
+
+
+##  Passport Holders
+
+PROPOSITION:  
+
+1.  As travel for business and leisure would become more difficult following an EU exit, the higher the percentage of passport holders the lower the Leave vote.
+
+
+```{r Passport Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+passport <- referendum[, c(12, 41:43)]
+ggpairs(passport) 
+
+ggplot(data = passport, aes(x = Passport.Percent, y = Leave.Percent)) +
+  geom_point(alpha = 0.2, color = "blue") +
+  geom_smooth(method = "lm", formula = y ~ x)
+
+options(warn=0)
+```
+
+There is reasonable correlation to support the proposition, but it's clearly not the full picture as there are a few groups of outliers.
+
+Note that as the correlation between Passport.Percent and No.Passport.Percent is -1, one of these should be excluded from a prediction model as they're saying the same thing.
+
+
+
+##  Social Grade
+
+As a reminder:
+
+| Grouping  |  Description                                                                |% UK Population|
+|:----------|:----------------------------------------------------------------------------|--------------:|
+|AB.Percent |Higher & intermediate managerial, administrative, professional jobs          |22.17          |
+|C1.Percent |Supervisory, clerical & junior managerial, administrative, professional jobs |30.84          |
+|C2.Percent |Skilled manual occupations                                                   |20.94          |
+|DE.Percent |Semi-skilled & unskilled manual occupations, Unemployed and lowest grade jobs|26.05          |
+
+PROPOSITION:
+
+1.  Higher levels of higher skilled social groupings (AB and C2) lead to lower Leave votes as they are less threatened by EU immigrants.
+
+
+```{r Social Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+social <- referendum[, c(12, 44:47)]
+ggpairs(social) 
+
+social <- gather(data = social, key = "Activity.Group", value = "Activity.Group.Percent", 
+                    AB.Percent, C1.Percent, C2.Percent, DE.Percent)
+
+ggplot(data = social, aes(x = Activity.Group.Percent, y = Leave.Percent, 
+                             color = Activity.Group)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  facet_grid(rows = vars(Activity.Group))
+
+options(warn=0)
+```
+
+The correlations don't indicate a link to skills - AB has a reasonably strong correlation against Leave and C1 a reasonably strong correlation for Leave.
+
+
+
+##  Other Variables
+
+PROPOSITION:
+
+1.  High EU Funding in a local authority will lead to a lower Leave vote.
+
+2.  Lower average House Prices is linked to a higher Leave vote.
+
+3.  Lower average Income is linked to a higher Leave vote. 
+
+
+```{r Misc Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+misc <- referendum[, c(12, 38:40)]
+misc1 <- referendum[, c(3, 12, 23, 38:40)]
+ggpairs(misc)   
+
+ggplot(data = misc1, aes(x = Avg.Property.Price.kGBP, y = Leave.Percent)) +
+  geom_point(alpha = 0.2, color = "red") +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(title = "Leave Percentage in Local Authorities against Avg Property Price (k GBP)")
+
+ggplot(data = misc1, aes(x = Avg.Income.kGBP, y = Leave.Percent)) +
+  geom_point(alpha = 0.2, color = "green") +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(title = "Leave Percentage in Local Authorities against Avg Income (k GBP)")
+
+options(warn=0)
+```
+
+The correlations for Average House Prices and Average Income tend toward supporting their propositions but are not particularly strong.  The outliers on these two variables can be found in the London region.
+
+Note that as the correlation between Avg.Property.Price.kGBP and Avg.Income.kGBP is very high, it's less likely that a prediction model would include both of these.
+
+```{r Property Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ggplot(data = misc1, aes(x = Avg.Property.Price.kGBP, y = Leave.Percent, color = Region.Name,
+                         fill = Region.Name)) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Leave Percentage in Local Authorities against Avg Property Price (k GBP)")
+
+ggplot(data = misc1, aes(x = Avg.Income.kGBP, y = Leave.Percent, color = Region.Name,
+                         fill = Region.Name)) +
+  geom_point(alpha = 0.5) +
+    labs(title = "Leave Percentage in Local Authorities against Avg Income (k GBP)")
+
+ggplot(data = misc1, aes(x = Total.EU.Funding.Millions, y = Leave.Percent)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(title = "Leave Percentage in Local Authorities against EU Funding (M GBP)")
+
+options(warn=0)
+```
+
+There is no correlation evidence to support the proposition on EU funding.  However there are a number of outlier points here - again I see a link to universities (which we can represent with the percentage of students), in this case showing high value EU funded research projects. 
+
+
+```{r EU Funding Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ggplot(data = misc1, aes(x = Total.EU.Funding.Millions, y = Leave.Percent, color = Student.Percent)) +
+  scale_colour_gradient2(low="#22FF00", mid="white", high="#FF0000", midpoint=8.8) +
+  geom_point(alpha = 0.8) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(title = "Leave Percentage in Local Authorities against EU Funding (M GBP)")
+
+options(warn=0)
+```
+
+
+
+
+## Appendix 1: Correlation to Turnout
+
+As we saw within Age Demographics there are some correlation patterns between the population characteristics and the turnout percentage which are suggestive of the sampling that happened from that population when individuals decided to vote.
+
+```{r Turnout Correlation2, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+##  Correlation against Turnout Percent
+
+ggplot(data = ref_corr_turnout, aes(y = Variable, x = Correlation, color = Correlation)) +
+  scale_colour_gradient2(low="#FF0000", mid="white", high="#22FF00", midpoint=0) +
+  geom_point() +
+  labs(title = "Correlation  to Turnout Percentage for each variable")
+
+ref_corr_turnout <- ref_corr_turnout[order(-ref_corr_turnout$Abs.Correlation),]
+knitr::kable(head(ref_corr_turnout[, c("Variable", "Correlation")], 11), row.names = FALSE)
+
+options(warn=0)
+```
+
+
+
+
+## Appendix 2: Significant Correlations between Variables
+
+For this purpose I've taken signifance to be an absolute value of 0.8 or higher.  This list contains those combinations already highlighted above and also some combinations which occur within a themed group because the total across the variables within that group has to add up to 100%.
+
+
+```{r Correlations Between Variables Graphic, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ggplot(ref_corr_high, aes(x = Variable, y = Variable1, color = Correlation)) +
+  scale_colour_gradient2(low="#FF0000", mid="white", high="#22FF00", midpoint=0) +
+  geom_point() +
+  labs(title = "Matrix of Significant Correlations between Variables") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ref_corr_high <- ref_corr_high[order(-ref_corr_high$Abs.Correlation),]
+knitr::kable(ref_corr_high[seq(1,nrow(ref_corr_high), by = 2),1:3], row.names = FALSE)
+
+options(warn=0)
+```
