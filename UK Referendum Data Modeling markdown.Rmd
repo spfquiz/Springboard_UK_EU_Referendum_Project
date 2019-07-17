@@ -1,0 +1,863 @@
+---
+title: "UK Referendum Data Modeling"
+author: "Simon Freeman"
+date: "18 juin 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+In creating a data model it's important to remember that its objective is to predict results as accurately
+as possible without overfitting.  It's not to find causality - the resulting model formula does not
+mean that these are the variables which have caused the result.  
+
+
+```{r Set Up, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(leaps)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(glmnet)
+library(pander)
+
+
+setwd("~/Data/brexit")
+options(max.print=10000)
+
+referendum <- read.csv("referendum_clean.csv")
+
+##  Shuffle the data to create new samples
+set.seed(519) #  The overall referendum result (including Scotland & Northern Ireland) was 51.9% Leave!!
+referendum <- referendum[sample(nrow(referendum)), ]
+
+##  Select only those columns with variables for the model 
+lm_train_vars <- referendum[, c(6, 14:24, 26:34, 36:41, 43:47)]
+
+options(warn=0)
+```
+
+##  Modeling the Data
+
+###  Drilling Down on Variable Combinations
+
+As there are over 30 variables the number of combinations is immense.  Therefore I wanted to find a way to narrow this down.
+
+My idea was to use "leaps" functionality to take the 20 "best" subsets of variables for each number of variables.  My assumption is that the combination with the lowest RMSE for each No of Variables will be one of these subsets.  These are then exported with the following format showing which variables are included:
+
+|  No. of Variables                | Variable1   | Variable2   | ... | Variable N  |
+|:---------------------------------|------------:|------------:|-----|------------:|
+| 1   (best Leaps combo 1 variable)|True or False|True or False| ... |True or False|
+| 1.1 (2nd best Leaps combo)       |True or False|True or False| ... |True or False|
+| ...                              |             |             |     |             |
+| 1.20 (20th best Leaps combo)     |True or False|True or False| ... |True or False|
+| 2                                |True or False|True or False| ... |True or False|
+| ...                              |             |             |     |             |
+| 31.20 (20th combo 31 variables)  |True or False|True or False| ... |True or False|
+
+
+I've then processed them in Excel to return a dataframe best_subsets which contains a list of the combinations of variables to run through a Cross Validation routine.  (Why Excel?  Simply because it seemed so much easier to do that way).  The returned data is in the format:
+
+    Variable1 + Variable2 + Variable3 + ... + VariableN
+    
+only for those variables which are True in each line.
+
+
+```{r Leaps, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+a <- regsubsets(x = lm_train_vars, y = referendum$Leave.Percent, nbest = 20, intercept = TRUE, 
+                method = c("exhaustive", "forward", "backward", "seqrep"), nvmax = 31)
+    
+b <- summary(a)
+subsets <- as.data.frame(b$which)
+write.csv(subsets, "subsets.csv")
+
+options(warn=0)
+```
+
+Using these combinations I've created a loop which creates the average Root Mean Squared Error for each one across a Cross Validation of 5 folds and then records the minimum for each number of variables for both Training and Test datasets.  (I've chosen 5 folds as the number of records is not really sufficient for 10 folds).  The following chart plots the lowest Training and Test RMSE for each number of variables.  The point of inflexion on the Test data curve demonstrates the point where increasing the number of variables stops improving the Test results as it overfits to the Testing data.  
+
+
+```{r Cross Validation Loop, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+res_train <- rep(0,5)
+res_test <- rep(0,5)
+res_subset_train <- rep(0,620)
+res_subset_test <- rep(0,620)
+
+best_subsets <- read.csv("best_subsets.csv", sep=";")
+
+##  Nested loop to run through each of the chosen combinations of variables (20 "best" for each No of Variables)
+##  and perform Cross Validation, recording the average RMSE.  Due to the size of the original dataset 
+##  I've chosen to use 5 folds.
+
+for (j in 1:620) {
+x <- best_subsets[j,1]
+
+for (i in 1:5)  {
+  
+  indices <- (((i-1) * round((1/5)*nrow(referendum))) + 1):min(((i*round((1/5) * nrow(referendum)))), nrow(referendum))
+  
+  ref_train <- referendum[-indices, ]
+  ref_test <- referendum[indices, ]
+  
+  model <- lm(formula(paste('Leave.Percent ~ ', x)), data = ref_train)
+  res_train[i] <- summary(model)$sigma
+  
+  ref_predict <- predict(model, ref_test)
+  error <- (ref_test$Leave.Percent - ref_predict)
+  res_test[i] <- sqrt(mean(error^2))
+  
+}
+
+res_subset_train[j] <- mean(res_train)
+res_subset_test[j] <- mean(res_test)
+
+}
+
+res_subset_train <- matrix(data = res_subset_train, nrow = 31, ncol = 20, byrow = TRUE)
+res_subset_test <- matrix(data = res_subset_test, nrow = 31, ncol = 20, byrow = TRUE)
+
+write.csv(res_subset_train, "res_subset_train.csv")
+write.csv(res_subset_test, "res_subset_test.csv")
+
+##  Create a single table containing the minimum RMSE for each No of Variables for both training and test
+##  datasets.  NB The methodology presented here is not perfect as it takes the absolute min for both the test
+##  and training sets rather than the test value associated with the combination which gives the training min.
+##  To avoid any significant misrepresentation I've followed the latter methodology in Excel.  In my Excel
+##  plot it's clear that the min test rmse for 14 variables is associated with a sub-optimal training rmse.
+
+res_subset_train <- as.data.frame(res_subset_train)
+names(res_subset_train) <- c("Leap.Combo1", "Leap.Combo2", "Leap.Combo3", "Leap.Combo4", "Leap.Combo5", 
+                             "Leap.Combo6", "Leap.Combo7", "Leap.Combo8", "Leap.Combo9", "Leap.Combo10",
+                             "Leap.Combo11", "Leap.Combo12", "Leap.Combo13", "Leap.Combo14", "Leap.Combo15", 
+                             "Leap.Combo16", "Leap.Combo17", "Leap.Combo18", "Leap.Combo19", "Leap.Combo20")
+res_subset_train$Min.RMSE.train <- apply(res_subset_train, 1, min)
+res_subset_train$No.of.Variables <- 1:nrow(res_subset_train)
+min_train_rmse <- res_subset_train[, c(21:22)]
+
+res_subset_test <- as.data.frame(res_subset_test)
+names(res_subset_test) <- c("Leap.Combo1", "Leap.Combo2", "Leap.Combo3", "Leap.Combo4", "Leap.Combo5", 
+                             "Leap.Combo6", "Leap.Combo7", "Leap.Combo8", "Leap.Combo9", "Leap.Combo10",
+                            "Leap.Combo11", "Leap.Combo12", "Leap.Combo13", "Leap.Combo14", "Leap.Combo15", 
+                            "Leap.Combo16", "Leap.Combo17", "Leap.Combo18", "Leap.Combo19", "Leap.Combo20")
+res_subset_test$Min.RMSE.test <- apply(res_subset_test, 1, min)
+res_subset_test$No.of.Variables <- 1:nrow(res_subset_test)
+min_test_rmse <- res_subset_test[, c(21:22)]
+
+best_rmse <- left_join(x = min_train_rmse, y = min_test_rmse, by = c("No.of.Variables" = "No.of.Variables"))
+names(best_rmse) <- c("Training.Data", "No.of.Variables", "Test.Data")
+best_rmse <- gather(best_rmse, key = "Data.Set", value = "Min.RMSE", Training.Data, Test.Data)
+
+##  Plot graphic of Min RMSE against No of Variables for Test and Training Data
+
+ggplot(data = best_rmse, aes(x = No.of.Variables, y = Min.RMSE, group = Data.Set, col = Data.Set)) +
+  geom_path(size = 1.5) +
+  labs(title = "Minimum RMSE by No of Variables for Training & Test Data")
+
+
+options(warn=0)
+```
+
+
+The number of variables which gives the minimum Test RMSE for the combination giving the minimum Training RMSE proves to be 12 variables and the combination which gave this result was:
+
+      Age.16.to.24.Percent + Age.35.to.54.Percent + Age.75.plus.Percent + Employee.Percent + Retired.Percent 
+      + Degree.Percent + Conservative.Percent + Nationalist.Percent + Non.British.White.UKborn.Percent 
+      + RoW.Immigrants.Percent + Avg.Income.kGBP + C1.Percent
+      
+This will now be my starting point for creating a linear model.
+
+
+Searching for the best model I'll start with a linear regression as defined above and then try to improve it by changing variables.  Then I'll look to beat the Root Mean Square Error on the Test Data with other modeling types.  The models below all apply to a 75% Training, 25% Test split.  
+ 
+  
+  
+### Linear Regression Model
+
+
+
+```{r Linear Model, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+train_index <- sample(seq_len(nrow(referendum)), size = floor(0.75 * nrow(referendum)))
+ref_train <- referendum[train_index, ]
+ref_test <- referendum[-train_index, ]
+
+model1 <- lm(Leave.Percent ~ Age.16.to.24.Percent + Age.35.to.54.Percent + Age.75.plus.Percent +
+               Employee.Percent + Retired.Percent + Degree.Percent + Conservative.Percent + 
+               Nationalist.Percent + Non.British.White.UKborn.Percent + RoW.Immigrants.Percent + 
+               Avg.Income.kGBP + C1.Percent, data = ref_train)
+pander(model1, split.table = Inf, pandoc.header("Training Data Coefficients", 4))
+summary_model1 <- data.frame(summary(model1)$sigma, summary(model1)$r.squared, summary(model1)$adj.r.squared)
+names(summary_model1) <- c("RMSE", "R-Squared", "Adj.R-Squared")
+knitr::kable(summary_model1, caption = "Summary Stats on Training Data for Linear Regression Model1")
+
+ref_predict <- predict(model1, ref_test)
+error <- (ref_test$Leave.Percent - ref_predict)
+test_model1 <- sqrt(mean(error^2))
+names(test_model1) <- c("RMSE")
+knitr::kable(test_model1, caption = "RMSE for Test Data")
+
+options(warn=0)
+```
+
+So the fitted model, with the coefficients taken from the Estimate column, is the formula:
+
+      Leave.Percent = 25.54 + 0.5375 * Age.16.to.24.Percent + 0.409 * Age.35.to.54.Percent 
+                    - 0.2008 * Age.75.plus.Percent + 0.1817 * Employee.Percent + 0.9421 * Retired.Percent 
+                    - 0.8835 * Degree.Percent + 0.1677 * Conservative.Percent + 0.5395 * Nationalist.Percent
+                    - 0.6017 * Non.British.White.UKborn.Percent + 0.2175 * RoW.Immigrants.Percent 
+                    + 0.2324 * Avg.Income.kGBP - 0.3483 * C1.Percent
+      
+This model gives a R-Squared on the Training Data which is fairly close to 1 (which is the best result possible) and the Adjusted R-Squared (which takes into account the number of variables and therefore helps to identify overfitting) is only a little less.  The RMSE of the Test Data (2.3445) is now the value we want to beat with other models.
+
+Looking at the coefficient table in the Pr(>|t|) column both Age.75.plus.Percent and Non.British.White.UKborn.Percent are unusually high for such a model.  However despite this I've not found any other combinations of variables (including removing these) which, when modeled, give a better result than the combination above.  
+  
+  
+  
+#### Error Distribution in Linear Model
+
+In order to get a visual idea of the accuracy of the predictions made for the Test Data by the model here are two plots.  
+
+The first plots Predictions against Actuals.  Here we see that the points are relatively close to the line which represents perfect predictions and that there is no particular difference to positive or negative errors no matter what the Leave.Percent value.
+
+The second plots Errors against Actuals.  Again the key point is that there doesn't appear to be any noticeable pattern suggesting a bias to the model.
+
+```{r Linear Model Error Distribution, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+regress_errors <- data.frame(ref_test$Leave.Percent, ref_predict, error)
+names(regress_errors) <- c("Actual.Leave.Percent", "Predicted.Leave.Percent", "Error")
+ggplot(regress_errors, aes(x = Actual.Leave.Percent, y = Predicted.Leave.Percent)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1)
+
+
+ggplot(regress_errors, aes(x = Actual.Leave.Percent, y = Error)) +
+  geom_point() +
+  geom_hline(yintercept = 0)
+
+##  What are the biggest errors?
+large_error <- as.data.frame(subset(error, abs(error) > 4))
+large_error$X <- as.integer(rownames(large_error))
+large_error <- left_join(x = large_error, y = ref_test, by = c("X" = "X"))
+large_error <- large_error[, c(1, 6, 13)]
+names(large_error) <- c("Error.vs.Model", "LA Name", "Leave.Percent")
+knitr::kable(large_error, caption = "Errors vs Model > 4%")
+
+options(warn=0)
+```
+
+Looking at the Local Authorities with the largest errors doesn't immediately suggest a particular pattern.  
+  
+  
+### CART Model
+
+Although CART modeling will often be more adapted to discrete results, it can also be used for continuous variables.  The particular advantage comes in the simplicity of the model which can easily be used in flowchart instructions.
+
+Here we'll consider a model using just the variables from the linear model above, and then one using all available variables.
+
+
+```{r CART Model1, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+tree <- rpart(Leave.Percent ~ Age.16.to.24.Percent + Age.35.to.54.Percent + Age.75.plus.Percent + 
+          Employee.Percent + Retired.Percent + Degree.Percent + Conservative.Percent + 
+          Nationalist.Percent + Non.British.White.UKborn.Percent + RoW.Immigrants.Percent + 
+          Avg.Income.kGBP + C1.Percent, data = ref_train)
+tree_pred <- predict(tree, newdata = ref_test)
+error_tree <- (ref_test$Leave.Percent - tree_pred)
+tree_rmse <- sqrt(mean(error_tree^2))
+names(tree_rmse) <- c("RMSE")
+knitr::kable(tree_rmse, caption = "RMSE for Test Data")
+prp(tree, main = "CART Model for Leave.Percent")
+
+options(warn=0)
+```
+
+
+With only 7 different predicted results it's not surprising that the RMSE for this model is higher than the linear model.
+
+```{r CART Model2, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+tree1 <- rpart(Leave.Percent ~ Turnout.Percent + Age.16.to.24.Percent + Age.25.to.34.Percent + 
+                 Age.35.to.54.Percent + Age.55.to.64.Percent + Age.65.to.74.Percent + Age.75.plus.Percent + 
+                 Employee.Percent + SelfEmployed.Percent + Unemployed.Percent + Student.Percent + 
+                 Retired.Percent + Degree.Percent + Formal.Education.to.16.Percent + Conservative.Percent +
+                 LibDem.and.Green.Percent + Nationalist.Percent + Other.Party.Percent + 
+                 White.British.Percent + Non.British.White.UKborn.Percent + EUborn.Immigrants.Percent +
+                 RoW.Immigrants.Percent + Total.EU.Funding.Millions + Avg.Property.Price.kGBP + 
+                 Avg.Income.kGBP + British.Passport.Percent + Passport.Percent + AB.Percent + C1.Percent + 
+                 C2.Percent + DE.Percent, data = ref_train)
+tree_pred1 <- predict(tree1, newdata = ref_test)
+error_tree1 <- (ref_test$Leave.Percent - tree_pred1)
+tree_rmse1 <- sqrt(mean(error_tree1^2))
+names(tree_rmse1) <- c("RMSE")
+knitr::kable(tree_rmse1, caption = "RMSE for Test Data")
+prp(tree1, main = "CART Model for Leave.Percent")
+
+options(warn=0)
+```
+
+
+Surprisingly in this model, making all of the variables available not only does not create a more complicated tree, but also results in a worse RMSE.  It's interesting to note that in both CART trees Education fields are in more than one level of the tree.  Therefore it's worth investigating a polynomial regression model.  
+  
+  
+### Random Forest Model
+
+Generally a CART decision tree can result can be improved by using a Random Forest approach which constructs a multitude of decision trees.  In this case I've taken 500 trees and used a minimum node size of 20.  In the first case I've taken just the variables used in the best linear regression model.
+
+
+```{r Random Forest Model1, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+rftree <- randomForest(Leave.Percent ~ Age.16.to.24.Percent + Age.35.to.54.Percent + Age.75.plus.Percent + 
+                Employee.Percent + Retired.Percent + Degree.Percent + Conservative.Percent + 
+                Nationalist.Percent + Non.British.White.UKborn.Percent + RoW.Immigrants.Percent + 
+                Avg.Income.kGBP + C1.Percent, data = ref_train, nodesize = 20, ntree = 500)
+rftree_pred <- predict(rftree, newdata = ref_test)
+error_rftree <- (ref_test$Leave.Percent - rftree_pred)
+rftree_rmse <- sqrt(mean(error_rftree^2))
+names(rftree_rmse) <- c("RMSE")
+knitr::kable(rftree_rmse, caption = "RMSE for Test Data")
+
+options(warn=0)
+```
+
+This Random Forest which uses the Linear Regression model variables is an improvement on the CART RMSE but still has a way to go to improve on the linear model.
+
+In this second model I've taken all variables.
+
+
+```{r Random Forest Model2, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+rftree1 <- randomForest(Leave.Percent ~ Turnout.Percent + Age.16.to.24.Percent + Age.25.to.34.Percent + 
+                         Age.35.to.54.Percent + Age.55.to.64.Percent + Age.65.to.74.Percent + 
+                         Age.75.plus.Percent + Employee.Percent + SelfEmployed.Percent + Unemployed.Percent +
+                         Student.Percent + Retired.Percent + Degree.Percent + Formal.Education.to.16.Percent +
+                         Conservative.Percent + LibDem.and.Green.Percent + Nationalist.Percent +
+                         Other.Party.Percent + White.British.Percent + Non.British.White.UKborn.Percent +
+                         EUborn.Immigrants.Percent + RoW.Immigrants.Percent + Total.EU.Funding.Millions +
+                         Avg.Property.Price.kGBP + Avg.Income.kGBP + British.Passport.Percent + 
+                         Passport.Percent + AB.Percent + C1.Percent + C2.Percent + DE.Percent, 
+                         data = ref_train, nodesize = 20, ntree = 500, importance = TRUE)
+rftree1_pred <- predict(rftree1, newdata = ref_test)
+error_rftree1 <- (ref_test$Leave.Percent - rftree1_pred)
+rftree1_rmse <- sqrt(mean(error_rftree1^2))
+names(rftree1_rmse) <- c("RMSE")
+knitr::kable(rftree1_rmse, caption = "RMSE for Test Data")
+
+options(warn=0)
+```
+
+
+Using all variables improves the Random Forest RMSE but is still behind the linear model.  But which variables are important according to Random Forest?   
+   
+   
+####  Importance
+
+```{r Random Forest Importance, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+import_rftree1 <- as.data.frame(importance(rftree1))
+names(import_rftree1) <- c("IncMSE", "IncNodePurity")
+import_rftree1$Purity.Rank <- NA
+rank.order.purity <- order(-import_rftree1$IncNodePurity)
+import_rftree1$MSE.Rank <- NA
+rank.order.mse <- order(-import_rftree1$IncMSE)
+import_rftree1$Purity.Rank[rank.order.purity] <- 1:nrow(import_rftree1)
+import_rftree1$MSE.Rank[rank.order.mse] <- 1:nrow(import_rftree1)
+knitr::kable(import_rftree1, caption = "Variable Importance")
+varImpPlot(rftree1, n.var = 15, main = "Top 15 Variables by Importance", cex = 0.8)
+
+options(warn=0)
+```
+  
+  
+  
+### Polynomial Regression
+
+In the CART model there is a repetition of variables, particularly the Degree.Percent field.  After trying a number of models starting from the linear regression the best one I found is as follows:
+
+        Age.16.to.24.Percent + Age.35.to.54.Percent + Employee.Percent + Retired.Percent 
+      + (Degree.Percent)^2 + Conservative.Percent + (Nationalist.Percent)^2 + RoW.Immigrants.Percent 
+      + Avg.Income.kGBP + C1.Percent
+
+(This time, unlike in the linear regression, removing Age.75.plus.Percent and Non.British.White.UKborn.Percent results in an improvement.)   
+  
+```{r Polynomial Model1, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+poly_model <- lm(Leave.Percent ~ poly(Degree.Percent, 2, raw = TRUE) + Age.16.to.24.Percent + 
+                    Age.35.to.54.Percent + Employee.Percent + Retired.Percent + Conservative.Percent + 
+                    poly(Nationalist.Percent, 2, raw = TRUE) + RoW.Immigrants.Percent + 
+                    Avg.Income.kGBP + C1.Percent, data = ref_train)
+
+pander(poly_model, split.table = Inf, pandoc.header("Training Data Coefficients", 4))
+summary_poly_model <- data.frame(summary(poly_model)$sigma, summary(poly_model)$r.squared, summary(poly_model)$adj.r.squared)
+names(summary_poly_model) <- c("RMSE", "R-Squared", "Adj.R-Squared")
+knitr::kable(summary_poly_model, caption = "Summary Stats on Training Data for Polynomial Regression Model")
+
+ref_poly_predict <- predict(poly_model, ref_test)
+error_poly <- (ref_test$Leave.Percent - ref_poly_predict)
+test_poly_model <- sqrt(mean(error_poly^2))
+names(test_poly_model) <- c("RMSE")
+knitr::kable(test_poly_model, caption = "RMSE for Test Data")
+
+options(warn=0)
+```
+
+This gives an improvement in RMSE (0.10 better) for both Training and Test data as well as having a slightly better Adjusted R-Squared (0.005 better). So as this is an improvement in both Test and Training data we can take this now as the leading model (without having to run a cross validation check).
+
+So the fitted model, with the coefficients taken from the Estimate column, is the formula:
+
+      Leave.Percent = 19.319672 + 0.584291 * Age.16.to.24.Percent + 0.48336 * 
+                    Age.35.to.54.Percent + 0.191375 * Employee.Percent + 0.950506 * Retired.Percent -   
+                    1.240066 * Degree.Percent + 0.006702 * (Degree.Percent)^2 + 0.16532 * Conservative.Percent 
+                    + 1.190884 * Nationalist.Percent - 0.018668 * (Nationalist.Percent)^2 + 0.251072  
+                    * RoW.Immigrants.Percent + 0.109659 * Avg.Income.kGBP - 0.300418 * C1.Percent
+  
+  
+#### Error Distribution in Polynomial Model
+
+
+```{r Polynomial Errors, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+regress_errors_poly <- data.frame(ref_test$Leave.Percent, ref_poly_predict, error_poly)
+names(regress_errors_poly) <- c("Actual.Leave.Percent", "Predicted.Leave.Percent", "Error")
+ggplot(regress_errors_poly, aes(x = Actual.Leave.Percent, y = Predicted.Leave.Percent)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1)
+
+
+ggplot(regress_errors_poly, aes(x = Actual.Leave.Percent, y = error_poly)) +
+  geom_point() +
+  geom_hline(yintercept = 0)
+
+##  What are the biggest errors?
+large_poly_error <- as.data.frame(subset(error_poly, abs(error_poly) > 4))
+large_poly_error$X <- as.integer(rownames(large_poly_error))
+large_poly_error <- left_join(x = large_poly_error, y = ref_test, by = c("X" = "X"))
+large_poly_error <- large_poly_error[, c(1, 6, 13)]
+names(large_poly_error) <- c("Error.vs.Model", "LA Name", "Leave.Percent")
+knitr::kable(large_poly_error, caption = "Errors vs Model > 4%")
+
+
+options(warn=0)
+```
+
+Again we have no discernible pattern to the distribution of errors and so conclude that the model doesn't have a noticeable bias.
+
+The size of the highest errors have reduced overall, but Thurrock must have got worse by more than 1%.
+  
+  
+  
+## Ridge Regression, Lasso and Elastic Net
+
+With these regressions penalties are used to reduce the risk of overfitting.  Ridge regression penalises large coefficients, Lasso penalises the number of variables used and Elastic Net is a combination of ridge and lasso.
+
+With these methods it's also helpful to create additional features (or combinations of variables).  In order to decide which features to create I've been influenced by logic (for example the ration of average house prices to average salary gives a measure of how well off someone would feel) and by investigating whether combinations with relatively low correlation, but some importance indicated from the Random Forest methodology, have improved the RMSE for Ridge regression.
+
+
+|  Additional Feature           | Definition                                       | 
+|:------------------------------|--------------------------------------------------|
+| House.Price.Ratio             |Avg.Property.Price.kGBP / Avg.Income.kGBP         |
+| House.minus.Income            |Avg.Property.Price.kGBP - Avg.Income.kGBP         |
+| Retired.minus.Student         |Retired.Percent - Student.Percent                 |
+| Nationalist.minus.LibDem      |Nationalist.Percent - LibDem.and.Green.Percent    |
+| Under.35                      |Age.16.to.24.Percent + Age.25.to.34.Percent       |
+| Immigrants                    |EUborn.Immigrants.Percent + RoW.Immigrants.Percent|
+| SelfEmployed.plus.Student     |SelfEmployed.Percent + Student.Percent            |
+| Unemployed.plus.Retired       |Unemployed.Percent + Retired.Percent              |
+| Conservative.plus.Nationalist |Conservative.Percent + Nationalist.Percent        |
+| Funding.by.Income             |Total.EU.Funding.Millions * Avg.Income.kGBP       |
+| LibDem.plus.RoW               |LibDem.and.Green.Percent + RoW.Immigrants.Percent |
+| LibDem.plus.Retired           |LibDem.and.Green.Percent + Retired.Percent        |
+| Nationalist.Squared           |(Nationalist.Percent) ^2                          |
+| Degree.Squared                |(Degree.Percent) ^2                               |
+
+
+Apart from the coefficients assigned to modeled variables there are two tuning variables: 
+
+  1) Lambda which defines the penalty ratio.  This can take any value greater than zero - however after running preliminary tests I've narrowed the value down to between 0 and 1 and have gone with smaller increments to increase the fine-tuning.
+    
+  2) Alpha, which defines whether a model is Ridge (alpha = 0), Lasso (alpha = 1) or somewhere in between 0 and 1 for a hybrid called Elastic Net.  
+
+
+### Ridge Regression
+
+```{r Ridge, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ref_train <- mutate(ref_train, House.Price.Ratio = (Avg.Property.Price.kGBP / Avg.Income.kGBP))
+ref_train <- mutate(ref_train, Retired.minus.Student = (Retired.Percent - Student.Percent))
+ref_train <- mutate(ref_train, House.minus.Income = (Avg.Property.Price.kGBP - Avg.Income.kGBP))
+ref_train <- mutate(ref_train, Nationalist.minus.LibDem = (Nationalist.Percent - LibDem.and.Green.Percent))
+ref_train <- mutate(ref_train, Under.35 = (Age.16.to.24.Percent + Age.25.to.34.Percent))
+ref_train <- mutate(ref_train, Immigrants = (EUborn.Immigrants.Percent + RoW.Immigrants.Percent))
+ref_train <- mutate(ref_train, SelfEmployed.plus.Student = (SelfEmployed.Percent + Student.Percent))
+ref_train <- mutate(ref_train, Unemployed.plus.Retired = (Unemployed.Percent + Retired.Percent))
+ref_train <- mutate(ref_train, Conservative.plus.Nationalist = (Conservative.Percent + Nationalist.Percent))
+ref_train <- mutate(ref_train, Funding.by.Income = (Total.EU.Funding.Millions * Avg.Income.kGBP))
+ref_train <- mutate(ref_train, LibDem.plus.RoW = (LibDem.and.Green.Percent + RoW.Immigrants.Percent))
+ref_train <- mutate(ref_train, LibDem.plus.Retired = (LibDem.and.Green.Percent + Retired.Percent))
+ref_train <- mutate(ref_train, Nationalist.Squared = (Nationalist.Percent * Nationalist.Percent))
+ref_train <- mutate(ref_train, Degree.Squared = (Degree.Percent * Degree.Percent))
+
+ref_test <- mutate(ref_test, House.Price.Ratio = (Avg.Property.Price.kGBP / Avg.Income.kGBP))
+ref_test <- mutate(ref_test, Retired.minus.Student = (Retired.Percent - Student.Percent))
+ref_test <- mutate(ref_test, House.minus.Income = (Avg.Property.Price.kGBP - Avg.Income.kGBP))
+ref_test <- mutate(ref_test, Nationalist.minus.LibDem = (Nationalist.Percent - LibDem.and.Green.Percent))
+ref_test <- mutate(ref_test, Under.35 = (Age.16.to.24.Percent + Age.25.to.34.Percent))
+ref_test <- mutate(ref_test, Immigrants = (EUborn.Immigrants.Percent + RoW.Immigrants.Percent))
+ref_test <- mutate(ref_test, SelfEmployed.plus.Student = (SelfEmployed.Percent + Student.Percent))
+ref_test <- mutate(ref_test, Unemployed.plus.Retired = (Unemployed.Percent + Retired.Percent))
+ref_test <- mutate(ref_test, Conservative.plus.Nationalist = (Conservative.Percent + Nationalist.Percent))
+ref_test <- mutate(ref_test, Funding.by.Income = (Total.EU.Funding.Millions * Avg.Income.kGBP))
+ref_test <- mutate(ref_test, LibDem.plus.RoW = (LibDem.and.Green.Percent + RoW.Immigrants.Percent))
+ref_test <- mutate(ref_test, LibDem.plus.Retired = (LibDem.and.Green.Percent + Retired.Percent))
+ref_test <- mutate(ref_test, Nationalist.Squared = (Nationalist.Percent * Nationalist.Percent))
+ref_test <- mutate(ref_test, Degree.Squared = (Degree.Percent * Degree.Percent))
+
+ref_train1 <- ref_train[, c(12, 14:24, 26:34, 36:41, 43:61)]
+ref_test1 <- ref_test[, c(12, 14:24, 26:34, 36:41, 43:61)]
+
+xtrain <- model.matrix(Leave.Percent~., ref_train1)[,-1]
+xtest <- model.matrix(Leave.Percent~., ref_test1)[,-1]
+ytrain <- ref_train$Leave.Percent
+ytest <- ref_test$Leave.Percent
+lambda <- seq(0.001, 1, length = 1000)  
+## An initial more broad ranging set of lambda indicated that it would be within this range
+
+##  Ridge Regression
+ridge.mod <- glmnet(xtrain, ytrain, alpha = 0, lambda = lambda)
+
+#  Find the best lambda from the options via cross-validation
+cv.out <- cv.glmnet(xtrain, ytrain, alpha = 0)
+bestlam <- cv.out$lambda.min
+
+#make predictions
+ridge.pred <- predict(ridge.mod, s = bestlam, newx = xtest)
+test_ridge_model <- sqrt(mean((ridge.pred-ytest)^2))
+test_ridge_model <- data.frame(bestlam, test_ridge_model)
+names(test_ridge_model) <- c("Lambda", "RMSE")
+knitr::kable(test_ridge_model, caption = "RMSE and tuning variables for Test Data using Ridge Regression")
+
+
+#Take a look at the coefficients
+k_ridge <- predict(ridge.mod, type = "coefficients", s = bestlam)
+k_ridge1 <- data.frame(k_ridge@Dimnames[[1]])
+k_ridge1 <- k_ridge1[(k_ridge@i)+1,]
+k_ridge1 <- data.frame(k_ridge1, k_ridge@x)
+names(k_ridge1) <- c("Feature", "Coefficient")
+knitr::kable(k_ridge1, caption = "Coefficients for Ridge Regression model")
+
+
+options(warn=0)
+```
+
+
+
+### Lasso Regression
+
+```{r Lasso, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+lasso.mod <- glmnet(xtrain, ytrain, alpha = 1, lambda = lambda)
+cv.out1 <- cv.glmnet(xtrain, ytrain, alpha = 1)
+bestlam1 <- cv.out1$lambda.min
+lasso.pred <- predict(lasso.mod, s = bestlam1, newx = xtest)
+test_lasso_model <- sqrt(mean((lasso.pred-ytest)^2))
+test_lasso_model <- data.frame(bestlam1, test_lasso_model)
+names(test_lasso_model) <- c("Lambda", "RMSE")
+knitr::kable(test_lasso_model, caption = "RMSE and tuning variables for Test Data using Lasso Regression")
+
+##  This is a little worse than the ridge regression
+k_lasso <- predict(lasso.mod, type = "coefficients", s = bestlam1)
+k_lasso1 <- data.frame(k_lasso@Dimnames[[1]])
+k_lasso1 <- k_lasso1[(k_lasso@i)+1,]
+k_lasso1 <- data.frame(k_lasso1, k_lasso@x)
+names(k_lasso1) <- c("Feature", "Coefficient")
+knitr::kable(k_lasso1, caption = "Coefficients for Lasso Regression model")
+
+options(warn=0)
+```
+
+NB Not all variables have a coefficient as Lasso chooses to reduce the number of variables in the model using penalties.
+
+
+
+
+### Elastic Net Regression
+
+```{r Elastic Net, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+best_rmse = 10
+for (i in 1:1000) {
+  el.net <- glmnet(xtrain, ytrain, alpha = i/1000, lambda = lambda)
+  cv.out2 <- cv.glmnet(xtrain, ytrain, alpha = i/1000)
+  bestlam2 <- cv.out2$lambda.min
+  el.net.pred <- predict(el.net, s = bestlam2, newx = xtest)
+  if (best_rmse > sqrt(mean((el.net.pred-ytest)^2))) {
+    alpha.best <- i/1000
+    lambda.best <- bestlam2
+    best_rmse <- sqrt(mean((el.net.pred-ytest)^2))
+  }
+}
+test_el_net_model <- data.frame(alpha.best, lambda.best, best_rmse)
+names(test_el_net_model) <- c("Alpha", "Lambda", "RMSE")
+knitr::kable(test_el_net_model, caption = "RMSE and tuning variables for Test Data using Elastic Net Regression")
+
+el.net.best <- glmnet(xtrain, ytrain, alpha = alpha.best, lambda = lambda.best)
+k_elnet <- predict(el.net.best, type = "coefficients")
+k_elnet1 <- data.frame(k_elnet@Dimnames[[1]])
+k_elnet1 <- k_elnet1[(k_elnet@i)+1,]
+k_elnet1 <- data.frame(k_elnet1, k_elnet@x)
+names(k_elnet1) <- c("Feature", "Coefficient")
+knitr::kable(k_elnet1, caption = "Coefficients for Elastic Net Regression model")
+
+options(warn=0)
+```
+
+
+Unfortunately this doesn't give quite as good an RMSE on the test data as the Polynomial model.  
+  
+  
+#### Error Distribution in Elastic Net Model
+
+
+```{r Elastic Net Errors, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ref_elnet_predict <- predict(el.net.best, newx = xtest)
+error_elnet <- (ytest - ref_elnet_predict)
+
+
+regress_errors_elnet <- data.frame(ytest, ref_elnet_predict, error_elnet)
+names(regress_errors_elnet) <- c("Actual.Leave.Percent", "Predicted.Leave.Percent", "Error")
+ggplot(regress_errors_elnet, aes(x = Actual.Leave.Percent, y = Predicted.Leave.Percent)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1)
+
+
+ggplot(regress_errors_elnet, aes(x = Actual.Leave.Percent, y = error_elnet)) +
+  geom_point() +
+  geom_hline(yintercept = 0)
+
+##  What are the biggest errors?
+large_elnet_error <- data.frame(error_elnet, ytest)
+large_elnet_error <- subset(large_elnet_error, abs(large_elnet_error$s0) > 4)
+large_elnet_error <- left_join(x = large_elnet_error, y = ref_test, by = c("ytest" = "Leave.Percent"))
+large_elnet_error <- large_elnet_error[, c(1, 2, 7)]
+names(large_elnet_error) <- c("Error.vs.Model", "Leave.Percent", "LA Name")
+knitr::kable(large_elnet_error, caption = "Errors vs Model > 4%")
+
+
+options(warn=0)
+```
+
+Again we have no discernible pattern to the distribution of errors and so conclude that the model doesn't have a noticeable bias.
+
+Overall the largest errors are slightly worse than for the polynomial model.  6 shared Local Authorities are all worse, then there were 2 areas which improved to be less than 4% and 2 areas which worsened to be included in this list.  
+  
+  
+##  Summary of Model Results
+
+
+|  Model Type                   | Best RMSE | Notes                                         | 
+|:------------------------------|-----------|-----------------------------------------------|
+| Linear Regression             | 2.344537  | Model with 12 variables                       |
+| CART                          | 4.16874   | The model only gives 7 different outcomes     |
+| Random Forest                 | 3.201406  | 5 variables with more than 10% IncMSE         |
+| Polynomial Regression         | 2.240775  | Model with 10 linear and 2 2nd order variables|
+| Ridge Regression              | 2.629288  | 14 additional features added                  |
+| Lasso Regression              | 2.483642  | 16 features used in model                     |
+| Elastic Net Regression        | 2.305884  | 31 features used in model                     |
+
+However it doesn't seem right that the polynomial model result should be better than the Elastic Net one - as the polynomial terms have been added as additional features and the Elastic Net family is a generalised regression form I would have expected it to be at least as good.
+
+The only reason appears to be that the Elastic Net Model was optimised across the whole of the data whereas the results in my comparison are for a single test data set.  To test this theory I've calculated the RMSE of the two models across all of the data.
+
+```{r Elnet Poly Comparision, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ref_full_set <- rbind(ref_train1, ref_test1)
+
+ref_full_set <- mutate(ref_full_set, Poly.Pred.Leave = (19.319672 + 0.584291 * Age.16.to.24.Percent + 0.48336 * 
+                    Age.35.to.54.Percent + 0.191375 * Employee.Percent + 0.950506 * Retired.Percent - 1.240066  
+                    * Degree.Percent + 0.006702 * (Degree.Percent)^2 + 0.16532 * Conservative.Percent + 1.190884
+                    * Nationalist.Percent - 0.018668 * (Nationalist.Percent)^2 + 0.251072 * 
+                      RoW.Immigrants.Percent + 0.109659 * Avg.Income.kGBP - 0.300418 * C1.Percent))
+
+ref_full_set <- mutate(ref_full_set, Elnet.Pred.Leave = (20.7216184 + 0.4048245 * Age.16.to.24.Percent +  
+                 0.4904544 * Age.35.to.54.Percent - 0.0017435 * Age.55.to.64.Percent - 0.0424295 * 
+                 Age.75.plus.Percent + 0.0687596 * Employee.Percent - 0.0716694 * SelfEmployed.Percent + 
+                 0.6806234 * Unemployed.Percent + 0.8358692 * Retired.Percent - 1.0643950 * Degree.Percent + 
+                 0.1270438 * Conservative.Percent - 0.0027423 * Labour.Percent + 1.0574917 * 
+                 Nationalist.Percent - 0.0276940 * Other.Party.Percent + 0.1070027 * White.British.Percent - 
+                 0.2085600 * Non.British.White.UKborn.Percent + 0.0756912 * RoW.Immigrants.Percent - 
+                 0.0014704 * Total.EU.Funding.Millions - 0.0468445 * British.Passport.Percent + 0.0246168 * 
+                 Passport.Percent - 0.2417771 * C1.Percent + 0.0954627 * C2.Percent - 0.1526199 * DE.Percent -
+                 0.2839498 * House.Price.Ratio + 0.0034809 * House.minus.Income + 0.2953199 * Immigrants +
+                 0.0013664 * Unemployed.plus.Retired + 0.0530070 * Conservative.plus.Nationalist + 0.0000035 *
+                 Funding.by.Income + 0.0231589 * LibDem.plus.RoW - 0.0157875 * Nationalist.Squared + 0.0045896
+                 * Degree.Squared))
+
+ref_full_set <- mutate(ref_full_set, Poly.Error2 = (Leave.Percent - Poly.Pred.Leave)^2)
+ref_full_set <- mutate(ref_full_set, Elnet.Error2 = (Leave.Percent - Elnet.Pred.Leave)^2)
+
+RMSE_full_set_poly <- sqrt(mean(ref_full_set[,"Poly.Error2"]))
+RMSE_full_set_elnet <- sqrt(mean(ref_full_set[,"Elnet.Error2"]))
+RMSE_full_set <- data.frame(RMSE_full_set_poly, RMSE_full_set_elnet)
+names(RMSE_full_set) <- c("Polynomial RMSE", "Elastic Net RMSE")
+knitr::kable(RMSE_full_set, caption = "RMSE across full dataset for best Polynomial and Elastic Net models")
+
+options(warn=0)
+```
+
+So the Elastic Net RMSE just happened to be relatively bad for the selected Test data subset; taken over all the data, the calculated model gives a better RMSE result than the Polynomial one and therefore is probably a higher performing predictor.  
+  
+  
+
+# Conclusions
+
+##  Understanding the Referendum
+
+Winston Churchill gave us two key quotes about the process of democracy:
+
+    "It has been said that democracy is the worst form of government; except all the others that have been tried."
+  
+    and "The best argument against democracy is a five-minute conversation with the average voter."
+  
+Both of these offer a little insight to this referendum project which I'll highlight under "Sampling Bias" and "Logical Voting".
+
+### Sampling Bias
+
+The exercise of democracy allows a voter to not vote.  In statistical terms this means that the actual results are not formed from the population statistics and may not be an unbiased sample of that population.  That is to say that in a given area there might be particular reasons why a particular cluster of the electorate are less likely to vote.  This may not be the same reason in different local authorities.  Unfortunately data on the voting sample is never made available as this would be considered "undemocratic" for the way in which it could impinge on voting anonymity. 
+
+Although we can't have any firm proof of biased samples we've seen that the overall correlations to Turnout Percent suggest the following pairings:
+
+
+|  Lower Turnout Percent        | Higher Turnout Percent        | 
+|:------------------------------|-------------------------------|
+| Age 35 and under              | Age 55 and over               |
+| Labour Party support          | Conservative Party support    |
+| Unemployed                    | Self Employed                 |
+| Non White British             | White British                 |
+ 
+
+ 
+This point is of fundamental importance in understanding our analyses and models - the Turnout Percent ranges from 59.2% up to 83.6% in England & Wales with an average of 73.0% so there is always a considerable amount of the population which is not directly linked to the referendum vote.
+
+Although the data modeling resulted in high (Adjusted) R-squared values I was personally a little disappointed by its errors - the best model has an average RMSE of 2.20% or an average absolute error of 1.76%.  I do believe that a fair amount of this error comes from the local authority voting (ie sampling) bias.  However because of voting confidentiality we will never know this for sure.  
+  
+  
+### Logical Voting
+
+Secondly as I posited in the introduction, the campaigns run ahead of the referendum did not appear to provide the relevant facts and figures needed for voters to make a data-driven decision.  
+
+Therefore we find that not all propositions that would appear to be logical have evidence supporting them.
+
+|  Proposition                    | Idea                         | Evidence                            | 
+|:--------------------------------|------------------------------|-------------------------------------|
+|Older people voted heavily to leave and younger people voted to remain | Younger people see EU as an opportunity, older people remember pre-EU nostalgically| The correlations support this but are not very convincing. This could be linked to Turnout sampling|
+| Students voted Remain and Retired people voted Leave | Similar to above| This is generally supported by correlations, but only about +/- 0.5|
+| The Unemployed voted Leave      | EU immigration is a threat to jobs| Not at all supported by correlation |
+| Higher education levels correspond to a lower Leave vote and lower levels to higher Leave| University broadens the mind | There are strong correlations in support of these Propositions    |                        |
+| Higher levels of EU immigrants in an area increases Leave vote | Reducing immigration was meant to be a key driver | The correlation is negative - higher immigrant levels link to lower Leave|
+| Higher levels of RoW immigrants increases the Leave vote  | RoW immigrants are often visibly non-British  | The correlation is negative - higher immigrant levels link to lower Leave|
+| The higher the percentage of passport holders the lower the Leave vote | Travel for business and leisure would become more difficult after EU exit | There is a reasonable correlation to support the proposition  |
+| Larger AB & C2 social groupings lead to lower Leave votes  | AB & C2 groups are skilled so jobs less threatened by EU immigrants  | There's a fairly strong correlation for AB, but C2 is a reasonably strong correlation for higher Leave |
+| High EU Funding locally leads to a lower Leave vote  | Recognition of local benefits| The correlation isn't strong, and would be weaker still without the university town outliers   |
+| Lower average House Prices and Income are linked to a higher Leave vote | Poorer areas might resent the monies sent out of the UK to the EU  | Although not super strong the correlations tend to confirm the proposition  | 
+
+So it's worth calling out that contrary to expectations:
+
+* Higher unemployment had virtually no correlation to higher Leave
+* Higher levels of immigrants did not correlate to higher Leave - in fact there was a reasonable negative correlation
+* Higher levels of EU funding locally had little correlation to higher Remain  
+  
+  
+##  Best Model
+
+Our best predictive model comes from an Elastic Net approach with the formula:
+
+    Leave.Percent = 20.7216184 + 0.4048245 * Age.16.to.24.Percent + 0.4904544 * Age.35.to.54.Percent 
+                  - 0.0017435 * Age.55.to.64.Percent - 0.0424295 * Age.75.plus.Percent 
+                  + 0.0687596 * Employee.Percent - 0.0716694 * SelfEmployed.Percent 
+                  + 0.6806234 * Unemployed.Percent + 0.8358692 * Retired.Percent - 1.0643950 * Degree.Percent 
+                  + 0.1270438 * Conservative.Percent - 0.0027423 * Labour.Percent 
+                  + 1.0574917 * Nationalist.Percent - 0.0276940 * Other.Party.Percent 
+                  + 0.1070027 * White.British.Percent - 0.2085600 * Non.British.White.UKborn.Percent 
+                  + 0.0756912 * RoW.Immigrants.Percent - 0.0014704 * Total.EU.Funding.Millions 
+                  - 0.0468445 * British.Passport.Percent + 0.0246168 * Passport.Percent 
+                  - 0.2417771 * C1.Percent + 0.0954627 * C2.Percent - 0.1526199 * DE.Percent 
+                  - 0.2839498 * (Avg.Property.Price.kGBP / Avg.Income.kGBP) 
+                  + 0.0034809 * (Avg.Property.Price.kGBP - Avg.Income.kGBP) 
+                  + 0.2953199 * (EUborn.Immigrants.Percent + RoW.Immigrants.Percent) 
+                  + 0.0013664 * (Unemployed.Percent + Retired.Percent) 
+                  + 0.0530070 * (Conservative.Percent + Nationalist.Percent) 
+                  + 0.0000035 * (Total.EU.Funding.Millions * Avg.Income.kGBP) 
+                  + 0.0231589 * (LibDem.and.Green.Percent + RoW.Immigrants.Percent) 
+                  - 0.0157875 * (Nationalist.Percent)^2 + 0.0045896 * (Degree.Percent)^2 
+ 
+ 
+This gives a RMSE of 2.20% across the entire dataset.  
+
+If we look at a geographic view of the errors in this model we can see that although there are no regional patterns to the prediction errors, there are a few potential clusterings of under predictions and over predictions which might lead to a further refinement opportunity.  
+  
+  
+```{r Error Mqp, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+coord_leave <- read.csv("coord_leave.csv")
+
+referendum <- mutate(referendum, Elastic.Net.Error = (Leave.Percent - (20.7216184 + 0.4048245 * Age.16.to.24.Percent 
+                 + 0.4904544 * Age.35.to.54.Percent - 0.0017435 * Age.55.to.64.Percent - 0.0424295 * 
+                 Age.75.plus.Percent + 0.0687596 * Employee.Percent - 0.0716694 * SelfEmployed.Percent + 
+                 0.6806234 * Unemployed.Percent + 0.8358692 * Retired.Percent - 1.0643950 * Degree.Percent + 
+                 0.1270438 * Conservative.Percent - 0.0027423 * Labour.Percent + 1.0574917 * 
+                 Nationalist.Percent - 0.0276940 * Other.Party.Percent + 0.1070027 * White.British.Percent - 
+                 0.2085600 * Non.British.White.UKborn.Percent + 0.0756912 * RoW.Immigrants.Percent - 
+                 0.0014704 * Total.EU.Funding.Millions - 0.0468445 * British.Passport.Percent + 0.0246168 * 
+                 Passport.Percent - 0.2417771 * C1.Percent + 0.0954627 * C2.Percent - 0.1526199 * DE.Percent -
+                 0.2839498 * (Avg.Property.Price.kGBP / Avg.Income.kGBP) + 0.0034809 * 
+                 (Avg.Property.Price.kGBP - Avg.Income.kGBP) + 0.2953199 * (EUborn.Immigrants.Percent +
+                 RoW.Immigrants.Percent) + 0.0013664 * (Unemployed.Percent + Retired.Percent) + 0.0530070 *
+                 (Conservative.Percent + Nationalist.Percent) + 0.0000035 * (Total.EU.Funding.Millions * 
+                 Avg.Income.kGBP) + 0.0231589 * (LibDem.and.Green.Percent + RoW.Immigrants.Percent) - 
+                 0.0157875 * (Nationalist.Percent)^2 + 0.0045896 * (Degree.Percent)^2)))
+
+elnet_leave <- referendum[,c(4:5, 48)]
+
+coord_leave <- left_join(x = coord_leave, y = elnet_leave, by = c("LA.Name1" = "LA.Name", "LA.Code1" = "LA.Code"))
+
+ggplot(data = coord_leave, aes(x = Easting, y = Northing, color = Elastic.Net.Error)) +
+  scale_colour_gradient2(low="#22FF00", mid="white", high="#FF0000", midpoint=0) +
+  geom_point() +
+  labs(title = "Map of Prediction Errors using Elastic Net model") +
+  theme(panel.background=element_rect(fill="lightblue"))
+
+options(warn=0)
+```
+  
+  
+  
+##  Scope for future research
+
+Apart from investigating the clustering shown above, it could be interesting to link this project through to the results of the recent EU elections.  In particular there was a strong polarisation of votes for a newly formed "Brexit" party for those people wanting to express a strong desire to Leave the EU, and those voting for the Liberal Democrat or Green parties wanting to express a strong desire to Remain in the EU.  The two parties who are traditionally the largest (Conservative & Labour) had a much smaller return than normal and might be considered as "Referendum neutral".  Although there would only be two data points, this could still give some scope for considering if there had been any real changes of view over the UK's membership of the EU in the intervening three years.
