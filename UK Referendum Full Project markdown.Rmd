@@ -1,0 +1,1943 @@
+---
+title: "Full Project - UK 2016 EU Referendum"
+author: "Simon Freeman"
+date: "17 juillet 2019"
+output: html_document
+---
+
+```{r Set Up, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(leaps)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(glmnet)
+library(pander)
+library(GGally)
+
+setwd("~/Data/brexit")
+options(max.print=10000)
+
+options(warn=0)
+```
+
+#   Project Description
+## Introduction
+
+On 23rd June 2016 the UK held a referendum asking the following question: 
+
+"Should the United Kingdom remain a member of the European Union or leave the European Union?"
+
+All British citizens over the age of 18 were allowed to vote unless, like me, they had lived outside of the UK for more than 15 years (including those actively living in the European Union).  Non-British EU citizens living and working in the UK also had no vote.
+
+The overall result was as follows:
+
+|                         | Votes     | Percentage  |
+|:------------------------|:----------|:------------|
+|Leave                    |17 410 742 |51.89%       |
+|Remain                   |16 141 241 |48.11%       |
+
+|                         | Votes     | Percentage  |
+|:------------------------|:----------|:------------|
+|Valid Votes              |33 551 983 |99.92%       |
+|Invalid Votes            |25 359     |0.08%        |
+|Total Votes              |33 577 342 |100.00%      |
+
+|                         | Voters    | Turnout     |
+|:------------------------|:----------|:------------|
+|Registered Voters/Turnout|46 500 001 |72.21%       |
+
+This was the first time that a referendum result had gone against the preferred option of the UK Government.
+
+
+##  European Union
+
+The European Union was created following the Treaty of Rome in 1957 by Belgium, France, Italy, Luxembourg, the Netherlands and West Germany with the aim of bringing about a common market and customs union.  An early accomplishment of the EU was the establishment of common agriculture pricing leading to the Common Agriculture Policy.  
+
+The UK first applied to join the Union in 1961, but their application was vetoed by French President, Charles de Gaulle, possibly seeing it as a "Trojan Horse" for unwanted US influence. Following the change of French President at the end of the 1960s, negotiations restarted in 1970 with the UK finally joining the EU in January 1973.
+
+In 1975 there was a UK referendum as to whether the UK should remain in the European Community (now EU).  At that time 67.23% of those voting, voted to Remain.
+
+The European Union is currently made up of 27 member countries   xx of which share a common currency, the Euro.
+
+##  Background to 2016 Referendum
+
+Following the 2007 Recession there has been an increase in Populism throughout Europe, coming with a widespread idea that governments and traditional political parties are unresponsive to the needs of the average citizen.  In many countries this has led both to the creation of new political parties and to a significantly increased vote for Nationalist parties.
+
+The UK Independence Party (UKIP) emerged and started to gain significant momentum.  Knowing that no sitting government had ever lost a referendum (including the recent Scottish Independence vote), the Conservative party made a manifesto commitment ahead of the 2015 general election to hold a referendum on continued EU membership probably in order to take votes from UKIP.  
+
+In the run up to the Referendum both sides (Leave & Remain) tended to appeal to emotion rather than presenting
+the relevant facts and figures of what leaving the EU would mean in practice. (The very opposite of a data-driven decision).  Some three years later, and a couple of months after the original exit date, it is now apparent that the separation from the EU is much messier and complex than anticipated and that there is deadlock both politically and throughout the country as to what would constitute an acceptable exit.  It has also forced the resignation of the Prime Minister who was unable to steer a path through the deadlock.  
+
+##  Project Proposal
+
+My proposal is to create a dataset including the referendum results, political results from the 2015 elections and socio-economic data from Census, EU and UK National Statistics sources and use it to examine relationships between the Leave Percent and available variables to see what might be significant.  Along the way I'll attempt to test some of the commonly held views about the referendum voting to see what support there might be for them.
+
+Then I want to use the same data to create a good predictive model for the Leave Percent by voting area. 
+
+**NB** There was a notable regional aspect to the voting with Northern Ireland (44.22% Leave) and Scotland (38.00% Leave).  Due to the consistency of these regional results I've decided to concentrate this study on England & Wales only as here we see the full range of results.  I've also excluded Gibraltar where, maybe not surprisingly for a voting area in continental Europe, the result was 4.09% Leave.
+
+The distribution of the Leave vote can be seen in the following graphic.  (The blank areas generally show remote areas often in National Parks where there is no Postcode data).
+
+```{r Results Plot, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+Coord_Lookup <- read.csv("National_Statistics_Postcode_Lookup_UK.csv", sep=";")
+
+Coord_Lookup <- select(filter(Coord_Lookup, (Country.Name == "England") | (Country.Name == "Wales")), 
+                       c("Postcode.1", "Easting", "Northing", "Local.Authority.Code", "Local.Authority.Name"))
+names(Coord_Lookup) <- c("Postcode", "Easting", "Northing", "LA.Code1", "LA.Name1")
+
+ref_leave <- read.csv("EU-referendum-result-data.csv", sep = ";")
+ref_leave <- ref_leave[, c(4:5, 20)]
+names(ref_leave) <- c("LA.Code", "LA.Name", "Leave.Percent")
+
+coord_leave <- left_join(x = Coord_Lookup, y = ref_leave, by = c("LA.Name1" = "LA.Name", "LA.Code1" = "LA.Code"))
+
+write.csv(coord_leave, "coord_leave.csv")
+
+ggplot(data = coord_leave, aes(x = Easting, y = Northing, color = Leave.Percent)) +
+  scale_colour_gradient2(low="#22FF00", mid="white", high="#FF0000", midpoint=50) +
+  geom_point() +
+  theme(panel.background=element_rect(fill="lightblue"))
+
+
+rm("coord_leave")
+options(warn=0)
+```
+  
+  
+  
+#   Data Cleaning
+##  Sources and Acknowledgements
+
+The clean referendum dataset comes from a series of individual sources as below.  I would like to acknowledge the sources of each of them for the work they've put in to making these data available.  In particular to John Lees-Miller, Hope Tho
+
+mas & Andrew Weeks for the work they've done in putting together the EU funding data which can be seen on the myeu.uk website.
+
+
+|   Dataset                                 | Source                                                      |
+|:------------------------------------------|------------------------------------------------------------:|
+|age_group.csv                              |Office for National Statistics: table nomis QS110EW          |
+|disposable_income_per_head.csv             |Office for National Statistics "Regional Gross Disposable Household Income (GDHI) by Local Authority"|
+|economic_activity.csv                      |Office for National Statistics: table nomis QS601EW          |
+|election_results.csv                       |2015 General Election results                                |
+|ethnicity_local_authority.csv              |Office for National Statistics: table nomis LC2205EW         |
+|eu_funding.csv                             |myeu.uk "Stories with Westminster Parliamentary Constituency"|
+|EU-referendum-result-data.csv              |Electoral Commission "EU Referendum Result"                  |
+|highest_qualification.csv                  |Office for National Statistics: table nomis QS501EW          |
+|house_prices.csv                           |Land Registry data.gov.uk "Price paid data YTD"              |
+|National_Statistics_Postcode_Lookup_UK.csv |Camden.gov.uk "National Statistics Postcode Lookup"          |
+|passport_held.csv                          |Office for National Statistics: table nomis QS212EW          |
+|social_grade.csv                           |Office for National Statistics: table nomis QS611EW          |
+
+
+
+##  Overall Methodology
+
+In some cases the data is directly available at the same level as the referendum results, in others I've needed to convert to this level.
+
+In particular this meant that I needed to use a Postcode lookup.  Unfortunately the best dataset I found had some missing Postcodes (despite 500 000 lines) so I decided on an iterative approach.
+
+            1.  If the full postcode was in the lookup use that;
+      Else  2.  Take the final character off the missing postcode and choose the Local Authority with the 
+            highest count for that combination;
+      Else  3.  Take the final two characters off the missing postcode and choose the Local Authority with the 
+            highest count for that combination.
+            
+This works because UK postcodes are very detailed and a full postcode may only apply to 20 houses.  There will almost certainly be a very small amount of missorting, but this shouldn't have any noticeable significance on the cleaned dataframe.
+
+Once the data is all held at the Local Authority level (thus aligned to the Referendum results), the clean dataset is formed by joining the individually cleaned sources together.  
+
+##  Specific Cleaning
+### Ethnicity Data
+
+This is a very complex dataset cross-referencing Geography of Birth with Nationality with Ethnic Grouping.  I've reduced the number of groupings to the following and converted them to a percentage of the population:
+
+|   Grouping                      |
+|:--------------------------------|
+|White.British.Percent            |
+|Non.British.White.UKborn.Percent |
+|British.Non.White.UKborn.Percent |
+|EUborn.Immigrants.Percent        |
+|RoW.Immigrants.Percent           |
+
+**NB** RoW means "Rest of the World"
+
+Why these groupings?  Was the referendum affected by the number of immigrants from the EU, the number of immigrants from elsewhere, or the number of people who are not "White"?  Is it different for second (or more) generation immigrants?  
+
+```{r Clean Ethnicity, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ethnicity <- read.csv("ethnicity_local_authority.csv", dec=",")
+
+ethnicity <- ethnicity[,c(1:4, 6, 25:30, 88:93, 106:111)]
+
+names(ethnicity) <- c("Ethnicity.Year", "LA.Name", "LA.Code", "Ethnicity.Total", "White.British", "NBWUK1", "NBWUK2", 
+                      "BNWUK1", "BNWUK2", "BNWUK3", "BNWUK4", "NBEU1", "NBEU2", "NBEU3", "NBEU4", "NBEU5", "NBEU6", 
+                      "NBEU7", "NBEU8", "NBEU9", "NBEU10", "NBEU11", "NBEU12")
+ethnicity <- mutate(ethnicity, Non.British.White.UKborn = (NBWUK1 + NBWUK2), 
+       British.Non.White.UKborn = (BNWUK1 + BNWUK2 + BNWUK3 + BNWUK4),
+       EUborn.Immigrants = (NBEU1 + NBEU2 + NBEU3 + NBEU4 + NBEU5 + NBEU6 + NBEU7 + NBEU8 + NBEU9 + NBEU10 + NBEU11 + NBEU12))
+ethnicity <- mutate(ethnicity, RoW.Immigrants = (Ethnicity.Total - White.British - Non.British.White.UKborn - British.Non.White.UKborn 
+                                    - EUborn.Immigrants))
+ethnicity <- mutate(ethnicity, White.British.Percent = (100 * White.British / Ethnicity.Total),
+                    Non.British.White.UKborn.Percent = (100 * Non.British.White.UKborn / Ethnicity.Total), 
+                    British.Non.White.UKborn.Percent = (100 * British.Non.White.UKborn / Ethnicity.Total), 
+                    EUborn.Immigrants.Percent = (100 * EUborn.Immigrants / Ethnicity.Total),
+                    RoW.Immigrants.Percent = (100 * RoW.Immigrants / Ethnicity.Total))
+
+ethnicity <- ethnicity[,c(2:3, 28:32)]
+
+write.csv(ethnicity, "ethnicity_clean.csv")
+rm("ethnicity")
+
+options(warn=0)
+```
+  
+### Postcode Data
+
+As described above I've created 3 lookup datasets for the full postcode, for the postcode minus the last character, and the postcode minus the last two characters.
+
+```{r Clean Postcode Lookup, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+##  Create Lookup from Postcode to Local Authority.
+##  This doesn't appear to be complete when matched with the EU funding dataset.
+##  Therefore I'm creating lookups on Postcode, on Postcode with the last character removed and on Postcode
+##  with the last two characters removed.
+
+Postcode_Lookup <- read.csv("National_Statistics_Postcode_Lookup_UK.csv", sep=";")
+
+Postcode_Lookup <- Postcode_Lookup[,c("Postcode.1", "Local.Authority.Code", "Local.Authority.Name")]
+names(Postcode_Lookup) <- c("Postcode", "LA.Code1", "LA.Name1")
+
+##  Remove spaces from Postcode to get consistent format for lookup
+Postcode_Lookup$Postcode <- gsub(" ", "", Postcode_Lookup$Postcode, fixed = TRUE)
+write.csv(Postcode_Lookup, "postcode_lookup.csv")
+
+##  Create lookup for Postcode with last character removed.  If there are multiple local authorities, take
+##  the one which is associated with most Postcodes
+Postcode_Lookup1 <- mutate(Postcode_Lookup, Postcode.Gp1 = substr(Postcode, 1, (nchar(Postcode) - 1)))
+Postcode_Lookup1 <- group_by(Postcode_Lookup1, Postcode.Gp1, LA.Code1, LA.Name1)
+Postcode_Lookup1 <- summarise(Postcode_Lookup1, PC.Count = n())
+Postcode_Lookup1 <- Postcode_Lookup1[order(Postcode_Lookup1$Postcode.Gp1, -abs(Postcode_Lookup1$PC.Count)), ]
+Postcode_Lookup1 <- Postcode_Lookup1[ !duplicated(Postcode_Lookup1$Postcode.Gp1), ]
+Postcode_Lookup1 <- select(Postcode_Lookup1, Postcode.Gp1, LA.Code1, LA.Name1)
+
+write.csv(Postcode_Lookup1, "postcode_lookup1.csv")
+
+##  Create lookup for Postcode with 2 last characters removed.  If there are multiple local authorities, take
+##  the one which is associated with most Postcodes
+Postcode_Lookup2 <- mutate(Postcode_Lookup1, Postcode.Gp2 = substr(Postcode.Gp1, 1, (nchar(Postcode.Gp1) - 1)))
+Postcode_Lookup2 <- group_by(Postcode_Lookup2, Postcode.Gp2, LA.Code1, LA.Name1)
+Postcode_Lookup2 <- summarise(Postcode_Lookup2, PC.Count = n())
+Postcode_Lookup2 <- Postcode_Lookup2[order(Postcode_Lookup2$Postcode.Gp2, -abs(Postcode_Lookup2$PC.Count)), ]
+Postcode_Lookup2 <- Postcode_Lookup2[ !duplicated(Postcode_Lookup2$Postcode.Gp2), ]
+Postcode_Lookup2 <- select(Postcode_Lookup2, Postcode.Gp2, LA.Code1, LA.Name1)
+
+write.csv(Postcode_Lookup2, "postcode_lookup2.csv")
+options(warn=0)
+```
+  
+### EU Funding Data
+
+I've taken the EU Funding at a Postcode level, converted to Millions of GB Pounds, and applied the three postcode lookup tables in turn only using a less detailed one if there's no match on the previous level in order to get the Local Authority for each line.  I've then summarised at the Local Authority level.
+
+```{r EU Funding, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+##  Clean and group EU Funding data, match with the Postcode Lookups and choose the non-NA Local Authority
+##  coming from the most detailed postcode
+
+eu_funding_lines <- read.csv("eu_funding.csv", sep=";")
+
+eu_funding_lines <- eu_funding_lines[,c("postcode", "eu_contribution_gbp")]
+names(eu_funding_lines) <- c("Postcode", "EU.Funding.GBP")
+
+eu_funding_lines[is.na(eu_funding_lines)] <- 0
+
+##  Remove spaces from Postcode to get consistent format for lookup and load local authority
+eu_funding_lines$Postcode <- gsub(" ", "", eu_funding_lines$Postcode, fixed = TRUE)
+eu_funding_lines <- mutate(eu_funding_lines, Postcode.Gp1 = substr(Postcode, 1, (nchar(Postcode) - 1)))
+eu_funding_lines <- mutate(eu_funding_lines, Postcode.Gp2 = substr(Postcode.Gp1, 1, (nchar(Postcode.Gp1) - 1)))
+
+eu_funding_lines <- left_join(x = eu_funding_lines, y = Postcode_Lookup, by = c("Postcode" = "Postcode"))
+eu_funding_lines <- left_join(x = eu_funding_lines, y = Postcode_Lookup1, by = c("Postcode.Gp1" = "Postcode.Gp1"))
+eu_funding_lines <- left_join(x = eu_funding_lines, y = Postcode_Lookup2, by = c("Postcode.Gp2" = "Postcode.Gp2"))
+
+##  Choose Local Authority from "best" postcode group
+eu_funding_lines <- mutate(eu_funding_lines, LA.Code = as.factor(ifelse(is.na(LA.Code1.x), 
+                                                              ifelse(is.na(LA.Code1.y), as.character(LA.Code1), as.character(LA.Code1.y)),
+                                                              as.character(LA.Code1))))
+eu_funding_lines <- mutate(eu_funding_lines, LA.Name = as.factor(ifelse(is.na(LA.Name1.x), 
+                                                              ifelse(is.na(LA.Name1.y), as.character(LA.Name1), as.character(LA.Name1.y)),
+                                                              as.character(LA.Name1))))
+
+##  Summarise EU funding by Local Authority
+eu_funding_clean <- group_by(eu_funding_lines, LA.Code, LA.Name)
+eu_funding_clean <- summarise(eu_funding_clean, Total.EU.Funding.Millions = sum(EU.Funding.GBP / 1000000))
+
+
+write.csv(eu_funding_clean, "eu_funding_clean.csv")
+rm("eu_funding_lines")
+rm("eu_funding_clean")
+
+
+options(warn=0)
+```
+  
+### House Price Data
+
+I've taken the House Price at a Postcode level, converted to Thousands of GB Pounds, and applied the three postcode lookup tables in turn only using a less detailed one if there's no match on the previous level in order to get the Local Authority for each line. I've also excluded Property Type = "O" (Other) from the dataset as this could be a very different type of property (eg Commercial Premises) which could distort the other data.  I've then summarised at the Local Authority level.
+
+I decided to combine the Residential Property Types into one as my intention was to concentrate on the overall cost of living in an area rather than on the mix of Houses vs Flats - my assumption being that the market would decide that mix.
+
+```{r Clean House Price, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean and group House Price data, match with the Postcode Lookups and choose the non-NA Local Authority
+##  coming from the most detailed postcode
+
+house_price_lines <- read.csv("house_prices.csv", header = FALSE)
+
+##  Remove O = "Other" from property type
+house_price_lines <- select(filter(house_price_lines, V5 != "O"),c(V2, V4, V5))
+
+names(house_price_lines) <- c("Property.Price", "Postcode", "Property.Type")
+
+
+##  Remove spaces from Postcode to get consistent format for lookup and load local authority
+house_price_lines$Postcode <- gsub(" ", "", house_price_lines$Postcode, fixed = TRUE)
+house_price_lines <- mutate(house_price_lines, Postcode.Gp1 = substr(Postcode, 1, (nchar(Postcode) - 1)))
+house_price_lines <- mutate(house_price_lines, Postcode.Gp2 = substr(Postcode.Gp1, 1, (nchar(Postcode.Gp1) - 1)))
+
+house_price_lines <- left_join(x = house_price_lines, y = Postcode_Lookup, by = c("Postcode" = "Postcode"))
+house_price_lines <- left_join(x = house_price_lines, y = Postcode_Lookup1, by = c("Postcode.Gp1" = "Postcode.Gp1"))
+house_price_lines <- left_join(x = house_price_lines, y = Postcode_Lookup2, by = c("Postcode.Gp2" = "Postcode.Gp2"))
+
+##  Choose Local Authority from "best" postcode group
+house_price_lines <- mutate(house_price_lines, LA.Code = as.factor(ifelse(is.na(LA.Code1.x), 
+                                                                        ifelse(is.na(LA.Code1.y), as.character(LA.Code1), as.character(LA.Code1.y)),
+                                                                        as.character(LA.Code1))))
+house_price_lines <- mutate(house_price_lines, LA.Name = as.factor(ifelse(is.na(LA.Name1.x), 
+                                                                        ifelse(is.na(LA.Name1.y), as.character(LA.Name1), as.character(LA.Name1.y)),
+                                                                        as.character(LA.Name1))))
+
+##  Summarise Housing by Local Authority
+house_price_clean <- group_by(house_price_lines, LA.Code, LA.Name)
+house_price_clean <- summarise(house_price_clean, Avg.Property.Price.kGBP = mean(Property.Price) / 1000)
+
+
+write.csv(house_price_clean, "house_price_clean.csv")
+rm("house_price_lines")
+rm("house_price_clean")
+rm("Postcode_Lookup")
+rm("Postcode_Lookup1")
+rm("Postcode_Lookup2")
+
+options(warn=0)
+```
+  
+### Passport Ownership
+
+From a simpler dataset I've summarised the percentages of people with a British Passport and No Passport.  With over 54 million visits into the EU from the UK in 2017 (making it the most popular destination for UK travel) which would become more complicated after a UK exit, I wanted to see if the lack of a passport might influence the results.
+
+```{r Clean Passport, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean Passport ownership
+passport <- read.csv("passport_held.csv", sep=";")
+
+passport <- mutate(passport, Total.Pop = (Europe..Total + Africa..Total + Middle.East.and.Asia..Total +
+                                            The.Americas.and.the.Caribbean..Total + Antarctica.and.Oceania..Total +
+                                            British.Overseas.Territories + No.passport.held))
+passport <- mutate(passport, British.Passport.Percent = (100 * Europe..United.Kingdom / Total.Pop))
+passport <- mutate(passport, No.Passport.Percent = (100 * No.passport.held / Total.Pop))
+passport <- mutate(passport, Passport.Percent = (100 - No.Passport.Percent))
+
+passport <- passport[, c(1:2, 12:14)]
+names(passport) <- c("LA.Name", "LA.Code", "British.Passport.Percent", "No.Passport.Percent", "Passport.Percent")
+
+write.csv(passport, "passport_clean.csv")
+rm("passport")
+options(warn=0)
+```
+  
+### Education
+
+Is there a link between education and voting patterns?  Although both Remain and Leave campaigns were led by educated people there has been some speculation that there may be some correlation.  I grouped the dataset into the following and created percentages:
+
+|   Grouping                      |  Description 
+|:--------------------------------|:----------------------------------|
+|Degree.Percent                   |University educated                |
+|Formal.Education.to.16.Percent   |Left school at minimum legal age   |
+
+```{r Clean Education, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean highest qualification
+education <- read.csv("highest_qualification.csv", sep=";")
+
+education <- mutate(education, Total.Pop = (No.qualifications + Level.1.qualifications + Level.2.qualifications +
+                                            Apprenticeship + Level.3.qualifications + 
+                                            Level.4.qualifications.and.above + Other.qualifications))
+education <- mutate(education, Degree.Percent = (100 * Level.4.qualifications.and.above / Total.Pop))
+education <- mutate(education, Formal.Education.to.16.Percent = (100 * (No.qualifications + Level.1.qualifications + Level.2.qualifications +
+                                                                   Apprenticeship) / Total.Pop))
+
+education <- education[, c(1:2, 11:12)]
+names(education) <- c( "LA.Name", "LA.Code", "Degree.Percent", "Formal.Education.to.16.Percent")
+
+write.csv(education, "education_clean.csv")
+rm("education")
+options(warn=0)
+```
+  
+### Election Results by Political Party
+
+This data comes from the UK general election in 2015, the year before the referendum and I've loaded it without making any changes in R.  I wanted to know if there were any political party links to the voting outside of those of nationalist parties (mostly UKIP) where a correlation is expected.
+
+```{r Clean Election Results, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean election results by party
+election <- read.csv("election_results.csv", sep=";")
+
+election <- election[, c(1:2, 8:12)]
+names(election) <- c( "LA.Code", "LA.Name", "Conservative.Percent", "Labour.Percent",
+                      "LibDem.and.Green.Percent", "Nationalist.Percent", "Other.Party.Percent")
+
+write.csv(election, "election_results_clean.csv")
+rm("election")
+options(warn=0)
+```
+  
+### Age Demographics
+
+After the referendum there was speculation that the Leave vote was very high amongst the older voters and a perceived outcry from younger voters that their desire to remain in the EU was not being heard.  What does the data say?  In this case the data didn't require any extra manipulations.
+
+```{r Clean Age, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean age demographics
+age <- read.csv("age_group.csv", sep=";")
+
+age <- age[, c(1:2, 9:14)]
+names(age) <- c( "LA.Name", "LA.Code", "Age.16.to.24.Percent", "Age.25.to.34.Percent", "Age.35.to.54.Percent", 
+                 "Age.55.to.64.Percent", "Age.65.to.74.Percent", "Age.75.plus.Percent")
+
+write.csv(age, "age_group_clean.csv")
+rm("age")
+options(warn=0)
+```
+  
+### Social Grouping
+
+Does the type of social grading (largely based on current or previous employment within a household) influence voting patterns?  As the group names are not self-evident I've included a description.  No cleaning was necessary on this data outside of giving consistent names to the fields.
+
+| Grouping  |  Description                                                                |% UK Population|
+|:----------|:----------------------------------------------------------------------------|--------------:|
+|AB.Percent |Higher & intermediate managerial, administrative, professional jobs          |22.17          |
+|C1.Percent |Supervisory, clerical & junior managerial, administrative, professional jobs |30.84          |
+|C2.Percent |Skilled manual occupations                                                   |20.94          |
+|DE.Percent |Semi-skilled & unskilled manual occupations, Unemployed and lowest grade jobs|26.05          |
+
+```{r Clean Social Grouping, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean social grouping
+social <- read.csv("social_grade.csv", sep=";")
+
+social <- social[, c(1:2, 8:11)]
+names(social) <- c( "LA.Name", "LA.Code", "AB.Percent", "C1.Percent", "C2.Percent", "DE.Percent")
+
+write.csv(social, "social_grade_clean.csv")
+rm("social")
+options(warn=0)
+```
+  
+### Economic Activity
+
+The EU is the biggest export market for UK businesses and under a Remain vote would continue to have no trade tarifs.  Did this influence the voting patterns for people in employment or employers?  Were the unemployed threatened by the free movement of people within the EU, causing more competition for jobs?
+
+I've taken the original data set and reduced the number of groups on the basis that it doesn't make any logical difference if someone works Full time or Part time or if someone who is self-employed also employs others or not.  A percentage has then been assigned to each group.
+
+|   Grouping                      |  Description                      |
+|:--------------------------------|:----------------------------------|
+|Employee.Percent                 |Both Full and Part time            |
+|SelfEmployed.Percent             |Both with and without Employees    |
+|Unemployed.Percent               |All unemployed                     |
+|Student.Percent                  |All students                       |
+|Retired.Percent                  |All retired                        |
+|Other.Activity.Percent           |Homemakers, Longterm Sick and Other|
+
+```{r Clean Economic Activity, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean Economic Activity
+economic <- read.csv("economic_activity.csv", sep=";")
+
+names(economic) <- c("LA.Name", "LA.Code", "Total", "Employee.PT", "Employee.FT", "Employer.PT", 
+                     "Employer.FT", "SelfEmployed.PT", "SelfEmployed.FT", "Unemployed", "Student.FT",
+                     "Retired", "Student.inactive", "Home", "Sick", "Other")
+
+economic <- mutate(economic, Employee.Percent = (100 * (Employee.PT + Employee.FT) / Total))
+economic <- mutate(economic, SelfEmployed.Percent = (100 * (Employer.PT + Employer.FT + SelfEmployed.PT
+                                                            + SelfEmployed.FT) / Total))
+economic <- mutate(economic, Unemployed.Percent = (100 * (Unemployed) / Total))
+economic <- mutate(economic, Student.Percent = (100 * (Student.FT + Student.inactive) / Total))
+economic <- mutate(economic, Retired.Percent = (100 * (Retired) / Total))
+economic <- mutate(economic, Other.Activity.Percent = (100 * (Home + Sick + Other) / Total))
+
+economic <- economic[, c(1:2, 17:22)]
+
+write.csv(economic, "economic_activity_clean.csv")
+rm("economic")
+options(warn=0)
+```
+  
+### Income
+
+I've taken this data as supplied except a conversion to Thousands of GB Pounds.
+
+```{r Clean Income, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean average income data
+income <- read.csv("disposable_income_per_head.csv", sep = ";")
+
+names(income) <- c( "Region.Name", "LA.Code", "LA.Name", "Income.GBP")
+income <- mutate(income, Avg.Income.kGBP = (Income.GBP / 1000))
+
+income <- income[, c(2:3, 5)]
+
+write.csv(income, "income_clean.csv")
+rm("income")
+options(warn=0)
+``` 
+  
+##  Final Dataset
+
+In order to create my clean dataset I've taken the Referendum results file, selected the columns to keep and renamed them for consistency.  I've then made left_joins with the other data matching on Local Authority Code and Local Authority Name.
+
+The structure of the new dataset is as follows:
+```{r Make Clean Referendum dataset, echo=FALSE, message=FALSE}
+options(warn=-1)
+##  Clean Brexit results and consolidate the other data tables
+referendum <- read.csv("EU-referendum-result-data.csv", sep = ";")
+
+referendum <- referendum[, c(2:5, 9:10, 12:14, 19:21)]
+names(referendum) <- c("Region.Code", "Region.Name", "LA.Code", "LA.Name", "Turnout.Percent", "Total.Votes", 
+                     "Remain", "Leave", "Rejected", "Remain.Percent", "Leave.Percent", "Rejected.Percent")
+
+age <- read.csv("age_group_clean.csv")
+referendum <- left_join(x = referendum, y = age, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("age")
+
+economic <- read.csv("economic_activity_clean.csv")
+referendum <- left_join(x = referendum, y = economic, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("economic")
+
+education <- read.csv("education_clean.csv")
+referendum <- left_join(x = referendum, y = education, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("education")
+
+election <- read.csv("election_results_clean.csv")
+referendum <- left_join(x = referendum, y = election, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("election")
+
+ethnicity <- read.csv("ethnicity_clean.csv")
+referendum <- left_join(x = referendum, y = ethnicity, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("ethnicity")
+
+funding <- read.csv("eu_funding_clean.csv")
+referendum <- left_join(x = referendum, y = funding, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("funding")
+
+house <- read.csv("house_price_clean.csv")
+referendum <- left_join(x = referendum, y = house, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("house")
+
+income <- read.csv("income_clean.csv")
+referendum <- left_join(x = referendum, y = income, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("income")
+
+passport <- read.csv("passport_clean.csv")
+referendum <- left_join(x = referendum, y = passport, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("passport")
+
+social <- read.csv("social_grade_clean.csv")
+referendum <- left_join(x = referendum, y = social, by = c("LA.Name" = "LA.Name", "LA.Code" = "LA.Code"))
+rm("social")
+
+referendum <- referendum[, c(1:12, 14:19, 21:26, 28:29, 31:35, 37:41, 43, 45, 47, 49:51, 53:56)]
+
+write.csv(referendum, "referendum_clean.csv")
+str(referendum)
+rm("referendum")
+options(warn=0)
+```
+  
+  
+# Data Analysis
+##  Introductory Graphics
+### Distribution of Leave Percentage
+
+As can be seen here there is a main group which is roughly normally distributed with a small cluster of low Leave Percentages.  Where is this cluster coming from?
+
+```{r Set Up Analysis, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+referendum <- read.csv("referendum_clean.csv")
+
+ggplot(data = referendum, aes(x = Leave.Percent)) + 
+  geom_histogram(aes(y =..density..), binwidth = 2, col = "red", fill ="lightblue") +
+  geom_density(col = 2, size = 1) +
+  labs(title = "Distribution of Leave Percentage in Local Authorities")
+
+sum_ref <- as.matrix(summary(referendum$Leave.Percent))
+knitr::kable(t(as.matrix(summary(referendum$Leave.Percent))), caption = "Summary Stats for Referendum Leave Percentages")
+
+rm("sum_ref")
+options(warn=0)
+```
+
+### Regional View of Results
+
+As a reminder, when setting up this dataset I decided to exclude Northern Ireland and Scotland (and Gibraltar) because their results appeared to be more heavily influenced by their regional geography more than any other factor.
+
+```{r Regional View, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ggplot(data = referendum, aes(x = Region.Name, y = Leave.Percent, color = Region.Name, fill = Region.Name)) +
+  stat_summary(fun.data = mean_sdl, col = "black") +
+  stat_summary(geom = "errorbar", fun.data = mean_sdl, col = "black", width = 0.2) +
+  geom_jitter(width = 0.2, aes(color = Region.Name, fill = Region.Name)) +
+  labs(title = "Distribution of Leave Percentage by Region") +
+  theme(axis.text.x = element_text(angle = 30))
+
+options(warn=0)
+```
+
+* London has the lowest average Leave vote, but also the widest distribution of results and is most represented in the cluster of low Leave Percentages
+* West Midlands has the highest average Leave vote and only one Local Authority (Warwick) where the result was to remain
+* North East has the smallest range between lowest and highest results, also with only one Local Authority (Newcastle upon Tyne) where the result was to remain
+* Wales has the tightest grouping of results, but one Local Authority (Cardiff) outside of the error bars
+* There are two Local Authorities with results over the error bar range - Boston in East and Havering in London
+* There are a greater number of Local Authorities with results under the error bar range, including Cambridge, Oxford, Brighton, Bristol, Cardiff, Manchester, York, Liverpool.  This list puts one in mind of universities.
+
+Assuming that local authorities with universities would have a higher percentage of students we can check the "university" effect in the following graphic.
+
+```{r Regional Student View, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ggplot(data = referendum, aes(x = Region.Name, y = Leave.Percent, color = Student.Percent)) +
+  stat_summary(fun.data = mean_sdl, col = "black") +
+  stat_summary(geom = "errorbar", fun.data = mean_sdl, col = "black", width = 0.2) +
+  scale_colour_gradient2(low="#22FF00", mid="white", high="#FF0000", midpoint=8.8) +
+  geom_jitter(width = 0.2) +
+  labs(title = "Distribution of Leave Percentage by Region") +
+  theme(axis.text.x = element_text(angle = 30))
+
+options(warn=0)
+```
+
+This does indeed show a tendency for local authorities with higher percentages of students to be at the lower end of the results for each Region.
+
+
+### Correlation to Leave Percent
+
+It can never be stated too many times that "Correlation is not Causation".  That is to say that a strong correlation between two variables in a dataset does not necessarily mean that one has caused the other - that might be the case or equally it could be a coincidence.  Sometimes Correlation can also strongly depend on outlying data points having undue influence on the overall result.
+
+```{r Leave Correlation, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+##  Correlation against Leave Percent
+referendum.corr1 <- referendum[, c(6, 12, 14:47)]
+ref_corr <- as.data.frame(cor(referendum.corr1))
+
+ref_corr_leave <- ref_corr[2, ]
+ref_corr_leave <- gather(data = ref_corr_leave, key = "Variable", value = "Correlation")
+ref_corr_leave <- mutate(ref_corr_leave, Abs.Correlation = abs(Correlation))
+
+ggplot(data = ref_corr_leave, aes(y = Variable, x = Correlation, color = Correlation)) +
+  scale_colour_gradient2(low="#FF0000", mid="white", high="#22FF00", midpoint=0) +
+  geom_point() +
+  labs(title = "Correlation to Leave Percentage for each variable")
+
+options(warn=0)
+```
+
+####  Highest Leave Correlations
+
+
+```{r Top Leave Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ref_corr_leave <- ref_corr_leave[order(-ref_corr_leave$Abs.Correlation),]
+knitr::kable(head(ref_corr_leave[, c("Variable", "Correlation")], 17), row.names = FALSE)
+             
+rm("ref_corr_leave")
+options(warn=0)
+```
+
+
+```{r Correlations Between Variables, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ref_corr$Variable1 <- rownames(ref_corr)
+ref_corr <- gather(data = ref_corr, -Variable1, key = "Variable", value = "Correlation")
+ref_corr <- mutate(ref_corr, Abs.Correlation = abs(Correlation))
+ref_corr_high <- select(filter(ref_corr, (Abs.Correlation >= 0.8) & (Abs.Correlation < 1)),c(Variable1, Variable, Correlation, Abs.Correlation))
+
+rm("ref_corr")
+options(warn=0)
+```
+
+
+```{r Turnout Correlation, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+##  Correlation against Turnout Percent
+
+ref_corr1 <- as.data.frame(cor(referendum.corr1))
+ref_corr_turnout <- ref_corr1[1, ]
+ref_corr_turnout <- gather(data = ref_corr_turnout, key = "Variable", value = "Correlation")
+ref_corr_turnout <- mutate(ref_corr_turnout, Abs.Correlation = abs(Correlation))
+
+rm("referendum.corr1")
+rm("ref_corr1")
+options(warn=0)
+```
+
+
+
+#   Detailed Visuals by Variable Category
+##  Age Demographics
+
+PROPOSITION:  People over a certain age voted heavily to leave and younger people voted to remain.
+
+####  Correlation
+
+```{r Age Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+age <- referendum[, c(12, 14:19)]
+names(age) <- c( "Leave.Percent", "16.to.24", "25.to.34", "35.to.54", "55.to.64", "65.to.74", "75.plus")
+ggpairs(age)
+
+options(warn=0)
+```
+
+This does show that correlation for percentage of younger voters is towards Remain and older voters is towards Leave.  But is this significant?  Let's consider two groups that have been talked about - one that remembers UK prior to EU membership and one which grew up post-Thatcher.
+
+```{r Age Plot, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+age <- mutate(age, Under.34.Percent = (`16.to.24` + `25.to.34`), Over.55.Percent = (`55.to.64` + `65.to.74` +
+                                                                                      `75.plus`))
+age <- age[, c(1, 8:9)]
+cor_age <- cor(age)
+knitr::kable(cor_age, caption ="Correlation Table")
+age <- gather(data = age, key = "Age.Group", value = "Age.Group.Percent", Under.34.Percent, Over.55.Percent)
+
+ggplot(data = age, aes(x = Age.Group.Percent, y = Leave.Percent, color = Age.Group)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  facet_grid(cols = vars(Age.Group))
+
+options(warn=0)
+```
+
+This continues to show a general tendance towards the Proposition BUT not very convincing.  Internet research suggests a proposition:  there was a lower turnout in the younger demographics than in the older demographics.
+
+####  Correlation between Age Demographics and Turnout
+
+```{r Age Correlations to Turnout, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ref_corr_turnout_age <- select(filter(ref_corr_turnout, substr(Variable, 1, 3) == "Age"),c(Variable, Correlation))
+knitr::kable(ref_corr_turnout_age)
+
+rm("age")
+rm("ref_corr_turnout_age")
+options(warn=0)
+```
+
+Although only indicative this shows that the larger the population of over 55s the higher the turnout and the the larger the population of under 34s the lower the turnout which is in line with the proposition.
+
+
+
+##  Professional Activity
+
+PROPOSITION:  
+
+1.  Students voted Remain and Retired people voted Leave.
+
+2.  The Unemployed wanted to stop EU immigration to increase the jobs available for UK nationals.
+
+```{r Activity Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+activity1 <- referendum[, c(12, 22:24)]
+activity2 <- referendum[, c(12, 20:25)]
+names(activity2) <- c( "Leave", "Employee", "SelfEmployed", "Unemployed", "Student", "Retired", "Other")
+ggpairs(activity2)
+
+activity1 <- gather(data = activity1, key = "Activity.Group", value = "Activity.Group.Percent", 
+                   Unemployed.Percent, Student.Percent, Retired.Percent)
+
+ggplot(data = activity1, aes(x = Activity.Group.Percent, y = Leave.Percent, 
+                            color = Activity.Group, group = Activity.Group )) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  facet_grid(rows = vars(Activity.Group))
+
+rm("activity1")
+rm("activity2")
+options(warn=0)
+```
+
+The correlations generally support the first proposition, but the correlations of around +/- 0.5 are not particularly strong.
+
+The correlation to Unemployment is rather low so doesn't appear to support the proposition.
+
+##  Education Levels
+
+PROPOSITION:  
+
+1.  Higher education levels correspond to a lower Leave vote (and vice versa).
+
+
+```{r Education Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+education <- referendum[, c(12, 26:27)]
+ggpairs(education)
+
+education <- gather(data = education, key = "Activity.Group", value = "Activity.Group.Percent", 
+                   Degree.Percent, Formal.Education.to.16.Percent)
+
+ggplot(data = education, aes(x = Activity.Group.Percent, y = Leave.Percent, 
+                            color = Activity.Group)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  facet_grid(cols = vars(Activity.Group))
+
+rm("education")
+options(warn=0)
+```
+
+There is a strong correlation between the percentages of high (Degree) or low (<16) education within a population and the percentage for Remain and Leave respectively.
+
+Note that as the correlation between Degree.Percent and Formal.Education.to.16.Percent is very strongly negative, it's unlikely that both will need to be included in a prediction model.
+
+
+
+##  Political Party Support
+
+PROPOSITION:  
+
+1.  The only relevant link to political party support is for the Nationalist Parties (mainly UKIP).
+
+
+```{r Politics Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+politics <- referendum[, c(12, 28:32)]
+names(politics) <- c( "Leave", "Conservative", "Labour", "Lib.Green", "Nationalist", "Other")
+ggpairs(politics)
+
+politics <- gather(data = politics, key = "Activity.Group", value = "Activity.Group.Percent", 
+                    Conservative, Labour, Lib.Green, Nationalist, Other)
+
+ggplot(data = politics, aes(x = Activity.Group.Percent, y = Leave, 
+                             color = Activity.Group)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  facet_grid(rows = vars(Activity.Group))
+
+rm("politics")
+options(warn=0)
+```
+
+Higher votes for a Nationalist Party (mainly UK Independence Party) preceeding the referendum is strongly correlated to a higher Leave vote.  Otherwise the links are not particularly strong.
+
+Note that as the correlation between Conservative.Percent and Labour.Percent is fairly strongly negative, it's less likely that both will need to be included in a prediction model.
+
+
+
+##  Ethnicity
+
+PROPOSITION:  
+
+One of the main messages preceeding the referendum was the desire to reduce EU immigration.
+
+1.  Higher levels of EU immigrants in an area increases the Leave vote.
+
+2.  Higher levels of more obvious immigrants (Rest of World immigrants will generally look different) increases the Leave vote.
+
+
+```{r Ethnicity Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ethnicity <- referendum[, c(12, 33:37)]
+names(ethnicity) <- c( "Leave", "White.Brit", "NonBr.Wh.UKborn", "NonWh.UKborn", "EU.Immig", "RoW.Immig")
+ggpairs(ethnicity)
+
+rm("ethnicity")
+options(warn=0) 
+```
+
+Although these correlation are not high they are interesting in that the only grouping with a positive correlation to the Leave Percent is White British.  That is to say that the higher the percentage of immigrants or descendants of immigrants the greater the tendency to a lower Leave vote.  Interestingly this is much the same tendency whether these groups were able to vote or not.
+
+
+
+##  Passport Holders
+
+PROPOSITION:  
+
+1.  As travel for business and leisure would become more difficult following an EU exit, the higher the percentage of passport holders the lower the Leave vote.
+
+
+```{r Passport Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+passport <- referendum[, c(12, 41:43)]
+ggpairs(passport) 
+
+ggplot(data = passport, aes(x = Passport.Percent, y = Leave.Percent)) +
+  geom_point(alpha = 0.2, color = "blue") +
+  geom_smooth(method = "lm", formula = y ~ x)
+
+rm("passport")
+options(warn=0)
+```
+
+There is reasonable correlation to support the proposition, but it's clearly not the full picture as there are a few groups of outliers.
+
+Note that as the correlation between Passport.Percent and No.Passport.Percent is -1, one of these should be excluded from a prediction model as they're saying the same thing.
+
+
+
+##  Social Grade
+
+As a reminder:
+
+| Grouping  |  Description                                                                |% UK Population|
+|:----------|:----------------------------------------------------------------------------|--------------:|
+|AB.Percent |Higher & intermediate managerial, administrative, professional jobs          |22.17          |
+|C1.Percent |Supervisory, clerical & junior managerial, administrative, professional jobs |30.84          |
+|C2.Percent |Skilled manual occupations                                                   |20.94          |
+|DE.Percent |Semi-skilled & unskilled manual occupations, Unemployed and lowest grade jobs|26.05          |
+
+PROPOSITION:
+
+1.  Higher levels of higher skilled social groupings (AB and C2) lead to lower Leave votes as they are less threatened by EU immigrants.
+
+
+```{r Social Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+social <- referendum[, c(12, 44:47)]
+ggpairs(social) 
+
+social <- gather(data = social, key = "Activity.Group", value = "Activity.Group.Percent", 
+                    AB.Percent, C1.Percent, C2.Percent, DE.Percent)
+
+ggplot(data = social, aes(x = Activity.Group.Percent, y = Leave.Percent, 
+                             color = Activity.Group)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  facet_grid(rows = vars(Activity.Group))
+
+rm("social")
+options(warn=0)
+```
+
+The correlations don't indicate a link to skills - AB has a reasonably strong correlation against Leave and C1 a reasonably strong correlation for Leave.
+
+
+
+##  Other Variables
+
+PROPOSITION:
+
+1.  High EU Funding in a local authority will lead to a lower Leave vote.
+
+2.  Lower average House Prices is linked to a higher Leave vote.
+
+3.  Lower average Income is linked to a higher Leave vote. 
+
+
+```{r Misc Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+misc <- referendum[, c(12, 38:40)]
+misc1 <- referendum[, c(3, 12, 23, 38:40)]
+ggpairs(misc)   
+
+ggplot(data = misc1, aes(x = Avg.Property.Price.kGBP, y = Leave.Percent)) +
+  geom_point(alpha = 0.2, color = "red") +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(title = "Leave Percentage in Local Authorities against Avg Property Price (k GBP)")
+
+ggplot(data = misc1, aes(x = Avg.Income.kGBP, y = Leave.Percent)) +
+  geom_point(alpha = 0.2, color = "green") +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(title = "Leave Percentage in Local Authorities against Avg Income (k GBP)")
+
+options(warn=0)
+```
+
+The correlations for Average House Prices and Average Income tend toward supporting their propositions but are not particularly strong.  The outliers on these two variables can be found in the London region.
+
+Note that as the correlation between Avg.Property.Price.kGBP and Avg.Income.kGBP is very high, it's less likely that a prediction model would include both of these.
+
+```{r Property Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ggplot(data = misc1, aes(x = Avg.Property.Price.kGBP, y = Leave.Percent, color = Region.Name,
+                         fill = Region.Name)) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Leave Percentage in Local Authorities against Avg Property Price (k GBP)")
+
+ggplot(data = misc1, aes(x = Avg.Income.kGBP, y = Leave.Percent, color = Region.Name,
+                         fill = Region.Name)) +
+  geom_point(alpha = 0.5) +
+    labs(title = "Leave Percentage in Local Authorities against Avg Income (k GBP)")
+
+ggplot(data = misc1, aes(x = Total.EU.Funding.Millions, y = Leave.Percent)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(title = "Leave Percentage in Local Authorities against EU Funding (M GBP)")
+
+options(warn=0)
+```
+
+There is no correlation evidence to support the proposition on EU funding.  However there are a number of outlier points here - again I see a link to universities (which we can represent with the percentage of students), in this case showing high value EU funded research projects. 
+
+
+```{r EU Funding Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ggplot(data = misc1, aes(x = Total.EU.Funding.Millions, y = Leave.Percent, color = Student.Percent)) +
+  scale_colour_gradient2(low="#22FF00", mid="white", high="#FF0000", midpoint=8.8) +
+  geom_point(alpha = 0.8) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(title = "Leave Percentage in Local Authorities against EU Funding (M GBP)")
+
+rm("misc")
+rm("misc1")
+options(warn=0)
+```
+
+
+
+
+## Appendix 1: Correlation to Turnout
+
+As we saw within Age Demographics there are some correlation patterns between the population characteristics and the turnout percentage which are suggestive of the sampling that happened from that population when individuals decided to vote.
+
+```{r Turnout Correlation2, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+##  Correlation against Turnout Percent
+
+ggplot(data = ref_corr_turnout, aes(y = Variable, x = Correlation, color = Correlation)) +
+  scale_colour_gradient2(low="#FF0000", mid="white", high="#22FF00", midpoint=0) +
+  geom_point() +
+  labs(title = "Correlation  to Turnout Percentage for each variable")
+
+ref_corr_turnout <- ref_corr_turnout[order(-ref_corr_turnout$Abs.Correlation),]
+knitr::kable(head(ref_corr_turnout[, c("Variable", "Correlation")], 11), row.names = FALSE)
+
+rm("ref_corr_turnout")
+options(warn=0)
+```
+
+
+
+
+## Appendix 2: Significant Correlations between Variables
+
+For this purpose I've taken signifance to be an absolute value of 0.8 or higher.  This list contains those combinations already highlighted above and also some combinations which occur within a themed group because the total across the variables within that group has to add up to 100%.
+
+
+```{r Correlations Between Variables Graphic, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ggplot(ref_corr_high, aes(x = Variable, y = Variable1, color = Correlation)) +
+  scale_colour_gradient2(low="#FF0000", mid="white", high="#22FF00", midpoint=0) +
+  geom_point() +
+  labs(title = "Matrix of Significant Correlations between Variables") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ref_corr_high <- ref_corr_high[order(-ref_corr_high$Abs.Correlation),]
+knitr::kable(ref_corr_high[seq(1,nrow(ref_corr_high), by = 2),1:3], row.names = FALSE)
+
+rm("ref_corr_high")
+rm("referendum")
+options(warn=0)
+```
+  
+  
+  
+# Data Modeling
+## Introduction
+
+In creating a data model it's important to remember that its objective is to predict results as accurately
+as possible without overfitting.  It's not to find causality - the resulting model formula does not
+mean that these are the variables which have caused the result.  
+
+
+```{r Set Up Model, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+referendum <- read.csv("referendum_clean.csv")
+
+##  Shuffle the data to create new samples
+set.seed(519) #  The overall referendum result (including Scotland & Northern Ireland) was 51.9% Leave!!
+referendum <- referendum[sample(nrow(referendum)), ]
+
+##  Select only those columns with variables for the model 
+lm_train_vars <- referendum[, c(6, 14:24, 26:34, 36:41, 43:47)]
+
+options(warn=0)
+```
+
+##  Modeling the Data
+
+###  Drilling Down on Variable Combinations
+
+As there are over 30 variables the number of combinations is immense.  Therefore I wanted to find a way to narrow this down.
+
+My idea was to use "leaps" functionality to take the 20 "best" subsets of variables for each number of variables.  My assumption is that the combination with the lowest RMSE for each No of Variables will be one of these subsets.  These are then exported with the following format showing which variables are included:
+
+|  No. of Variables                | Variable1   | Variable2   | ... | Variable N  |
+|:---------------------------------|------------:|------------:|-----|------------:|
+| 1   (best Leaps combo 1 variable)|True or False|True or False| ... |True or False|
+| 1.1 (2nd best Leaps combo)       |True or False|True or False| ... |True or False|
+| ...                              |             |             |     |             |
+| 1.20 (20th best Leaps combo)     |True or False|True or False| ... |True or False|
+| 2                                |True or False|True or False| ... |True or False|
+| ...                              |             |             |     |             |
+| 31.20 (20th combo 31 variables)  |True or False|True or False| ... |True or False|
+
+
+I've then processed them in Excel to return a dataframe best_subsets which contains a list of the combinations of variables to run through a Cross Validation routine.  (Why Excel?  Simply because it seemed so much easier to do that way).  The returned data is in the format:
+
+    Variable1 + Variable2 + Variable3 + ... + VariableN
+    
+only for those variables which are True in each line.
+
+
+```{r Leaps, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+a <- regsubsets(x = lm_train_vars, y = referendum$Leave.Percent, nbest = 20, intercept = TRUE, 
+                method = c("exhaustive", "forward", "backward", "seqrep"), nvmax = 31)
+    
+a <- summary(a)
+subsets <- as.data.frame(a$which)
+write.csv(subsets, "subsets.csv")
+
+rm("a")
+rm("subsets")
+options(warn=0)
+```
+
+Using these combinations I've created a loop which creates the average Root Mean Squared Error for each one across a Cross Validation of 5 folds and then records the minimum for each number of variables for both Training and Test datasets.  (I've chosen 5 folds as the number of records is not really sufficient for 10 folds).  The following chart plots the lowest Training and Test RMSE for each number of variables.  The point of inflexion on the Test data curve demonstrates the point where increasing the number of variables stops improving the Test results as it overfits to the Testing data.  
+
+
+```{r Cross Validation Loop, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+res_train <- rep(0,5)
+res_test <- rep(0,5)
+res_subset_train <- rep(0,620)
+res_subset_test <- rep(0,620)
+
+best_subsets <- read.csv("best_subsets.csv", sep=";")
+
+##  Nested loop to run through each of the chosen combinations of variables (20 "best" for each No of Variables)
+##  and perform Cross Validation, recording the average RMSE.  Due to the size of the original dataset 
+##  I've chosen to use 5 folds.
+
+for (j in 1:620) {
+x <- best_subsets[j,1]
+
+for (i in 1:5)  {
+  
+  indices <- (((i-1) * round((1/5)*nrow(referendum))) + 1):min(((i*round((1/5) * nrow(referendum)))), nrow(referendum))
+  
+  ref_train <- referendum[-indices, ]
+  ref_test <- referendum[indices, ]
+  
+  model <- lm(formula(paste('Leave.Percent ~ ', x)), data = ref_train)
+  res_train[i] <- summary(model)$sigma
+  
+  ref_predict <- predict(model, ref_test)
+  error <- (ref_test$Leave.Percent - ref_predict)
+  res_test[i] <- sqrt(mean(error^2))
+  
+}
+
+res_subset_train[j] <- mean(res_train)
+res_subset_test[j] <- mean(res_test)
+
+}
+
+res_subset_train <- matrix(data = res_subset_train, nrow = 31, ncol = 20, byrow = TRUE)
+res_subset_test <- matrix(data = res_subset_test, nrow = 31, ncol = 20, byrow = TRUE)
+
+write.csv(res_subset_train, "res_subset_train.csv")
+write.csv(res_subset_test, "res_subset_test.csv")
+
+##  Create a single table containing the minimum RMSE for each No of Variables for both training and test
+##  datasets.  NB The methodology presented here is not perfect as it takes the absolute min for both the test
+##  and training sets rather than the test value associated with the combination which gives the training min.
+##  To avoid any significant misrepresentation I've followed the latter methodology in Excel.  In my Excel
+##  plot it's clear that the min test rmse for 14 variables is associated with a sub-optimal training rmse.
+
+res_subset_train <- as.data.frame(res_subset_train)
+names(res_subset_train) <- c("Leap.Combo1", "Leap.Combo2", "Leap.Combo3", "Leap.Combo4", "Leap.Combo5", 
+                             "Leap.Combo6", "Leap.Combo7", "Leap.Combo8", "Leap.Combo9", "Leap.Combo10",
+                             "Leap.Combo11", "Leap.Combo12", "Leap.Combo13", "Leap.Combo14", "Leap.Combo15", 
+                             "Leap.Combo16", "Leap.Combo17", "Leap.Combo18", "Leap.Combo19", "Leap.Combo20")
+res_subset_train$Min.RMSE.train <- apply(res_subset_train, 1, min)
+res_subset_train$No.of.Variables <- 1:nrow(res_subset_train)
+min_train_rmse <- res_subset_train[, c(21:22)]
+
+res_subset_test <- as.data.frame(res_subset_test)
+names(res_subset_test) <- c("Leap.Combo1", "Leap.Combo2", "Leap.Combo3", "Leap.Combo4", "Leap.Combo5", 
+                             "Leap.Combo6", "Leap.Combo7", "Leap.Combo8", "Leap.Combo9", "Leap.Combo10",
+                            "Leap.Combo11", "Leap.Combo12", "Leap.Combo13", "Leap.Combo14", "Leap.Combo15", 
+                            "Leap.Combo16", "Leap.Combo17", "Leap.Combo18", "Leap.Combo19", "Leap.Combo20")
+res_subset_test$Min.RMSE.test <- apply(res_subset_test, 1, min)
+res_subset_test$No.of.Variables <- 1:nrow(res_subset_test)
+min_test_rmse <- res_subset_test[, c(21:22)]
+
+best_rmse <- left_join(x = min_train_rmse, y = min_test_rmse, by = c("No.of.Variables" = "No.of.Variables"))
+names(best_rmse) <- c("Training.Data", "No.of.Variables", "Test.Data")
+best_rmse <- gather(best_rmse, key = "Data.Set", value = "Min.RMSE", Training.Data, Test.Data)
+
+##  Plot graphic of Min RMSE against No of Variables for Test and Training Data
+
+ggplot(data = best_rmse, aes(x = No.of.Variables, y = Min.RMSE, group = Data.Set, col = Data.Set)) +
+  geom_path(size = 1.5) +
+  labs(title = "Minimum RMSE by No of Variables for Training & Test Data")
+
+
+options(warn=0)
+```
+
+
+The number of variables which gives the minimum Test RMSE for the combination giving the minimum Training RMSE proves to be 12 variables and the combination which gave this result was:
+
+      Age.16.to.24.Percent + Age.35.to.54.Percent + Age.75.plus.Percent + Employee.Percent + Retired.Percent 
+      + Degree.Percent + Conservative.Percent + Nationalist.Percent + Non.British.White.UKborn.Percent 
+      + RoW.Immigrants.Percent + Avg.Income.kGBP + C1.Percent
+      
+This will now be my starting point for creating a linear model.
+
+
+Searching for the best model I'll start with a linear regression as defined above and then try to improve it by changing variables.  Then I'll look to beat the Root Mean Square Error on the Test Data with other modeling types.  The models below all apply to a 75% Training, 25% Test split.  
+ 
+  
+  
+### Linear Regression Model
+
+
+
+```{r Linear Model, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+train_index <- sample(seq_len(nrow(referendum)), size = floor(0.75 * nrow(referendum)))
+ref_train <- referendum[train_index, ]
+ref_test <- referendum[-train_index, ]
+
+model1 <- lm(Leave.Percent ~ Age.16.to.24.Percent + Age.35.to.54.Percent + Age.75.plus.Percent +
+               Employee.Percent + Retired.Percent + Degree.Percent + Conservative.Percent + 
+               Nationalist.Percent + Non.British.White.UKborn.Percent + RoW.Immigrants.Percent + 
+               Avg.Income.kGBP + C1.Percent, data = ref_train)
+pander(model1, split.table = Inf, pandoc.header("Training Data Coefficients", 4))
+summary_model1 <- data.frame(summary(model1)$sigma, summary(model1)$r.squared, summary(model1)$adj.r.squared)
+names(summary_model1) <- c("RMSE", "R-Squared", "Adj.R-Squared")
+knitr::kable(summary_model1, caption = "Summary Stats on Training Data for Linear Regression Model1")
+
+ref_predict <- predict(model1, ref_test)
+error <- (ref_test$Leave.Percent - ref_predict)
+test_model1 <- sqrt(mean(error^2))
+names(test_model1) <- c("RMSE")
+knitr::kable(test_model1, caption = "RMSE for Test Data")
+
+options(warn=0)
+```
+
+So the fitted model, with the coefficients taken from the Estimate column, is the formula:
+
+      Leave.Percent = 25.54 + 0.5375 * Age.16.to.24.Percent + 0.409 * Age.35.to.54.Percent 
+                    - 0.2008 * Age.75.plus.Percent + 0.1817 * Employee.Percent + 0.9421 * Retired.Percent 
+                    - 0.8835 * Degree.Percent + 0.1677 * Conservative.Percent + 0.5395 * Nationalist.Percent
+                    - 0.6017 * Non.British.White.UKborn.Percent + 0.2175 * RoW.Immigrants.Percent 
+                    + 0.2324 * Avg.Income.kGBP - 0.3483 * C1.Percent
+      
+This model gives a R-Squared on the Training Data which is fairly close to 1 (which is the best result possible) and the Adjusted R-Squared (which takes into account the number of variables and therefore helps to identify overfitting) is only a little less.  The RMSE of the Test Data (2.3445) is now the value we want to beat with other models.
+
+Looking at the coefficient table in the Pr(>|t|) column both Age.75.plus.Percent and Non.British.White.UKborn.Percent are unusually high for such a model.  However despite this I've not found any other combinations of variables (including removing these) which, when modeled, give a better result than the combination above.  
+  
+  
+  
+#### Error Distribution in Linear Model
+
+In order to get a visual idea of the accuracy of the predictions made for the Test Data by the model here are two plots.  
+
+The first plots Predictions against Actuals.  Here we see that the points are relatively close to the line which represents perfect predictions and that there is no particular difference to positive or negative errors no matter what the Leave.Percent value.
+
+The second plots Errors against Actuals.  Again the key point is that there doesn't appear to be any noticeable pattern suggesting a bias to the model.
+
+```{r Linear Model Error Distribution, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+regress_errors <- data.frame(ref_test$Leave.Percent, ref_predict, error)
+names(regress_errors) <- c("Actual.Leave.Percent", "Predicted.Leave.Percent", "Error")
+ggplot(regress_errors, aes(x = Actual.Leave.Percent, y = Predicted.Leave.Percent)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1)
+
+
+ggplot(regress_errors, aes(x = Actual.Leave.Percent, y = Error)) +
+  geom_point() +
+  geom_hline(yintercept = 0)
+
+##  What are the biggest errors?
+large_error <- as.data.frame(subset(error, abs(error) > 4))
+large_error$X <- as.integer(rownames(large_error))
+large_error <- left_join(x = large_error, y = ref_test, by = c("X" = "X"))
+large_error <- large_error[, c(1, 6, 13)]
+names(large_error) <- c("Error.vs.Model", "LA Name", "Leave.Percent")
+knitr::kable(large_error, caption = "Errors vs Model > 4%")
+
+options(warn=0)
+```
+
+Looking at the Local Authorities with the largest errors doesn't immediately suggest a particular pattern.  
+  
+  
+### CART Model
+
+Although CART modeling will often be more adapted to discrete results, it can also be used for continuous variables.  The particular advantage comes in the simplicity of the model which can easily be used in flowchart instructions.
+
+Here we'll consider a model using just the variables from the linear model above, and then one using all available variables.
+
+
+```{r CART Model1, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+tree <- rpart(Leave.Percent ~ Age.16.to.24.Percent + Age.35.to.54.Percent + Age.75.plus.Percent + 
+          Employee.Percent + Retired.Percent + Degree.Percent + Conservative.Percent + 
+          Nationalist.Percent + Non.British.White.UKborn.Percent + RoW.Immigrants.Percent + 
+          Avg.Income.kGBP + C1.Percent, data = ref_train)
+tree_pred <- predict(tree, newdata = ref_test)
+error_tree <- (ref_test$Leave.Percent - tree_pred)
+tree_rmse <- sqrt(mean(error_tree^2))
+names(tree_rmse) <- c("RMSE")
+knitr::kable(tree_rmse, caption = "RMSE for Test Data")
+prp(tree, main = "CART Model for Leave.Percent")
+
+options(warn=0)
+```
+
+
+With only 7 different predicted results it's not surprising that the RMSE for this model is higher than the linear model.
+
+```{r CART Model2, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+tree1 <- rpart(Leave.Percent ~ Turnout.Percent + Age.16.to.24.Percent + Age.25.to.34.Percent + 
+                 Age.35.to.54.Percent + Age.55.to.64.Percent + Age.65.to.74.Percent + Age.75.plus.Percent + 
+                 Employee.Percent + SelfEmployed.Percent + Unemployed.Percent + Student.Percent + 
+                 Retired.Percent + Degree.Percent + Formal.Education.to.16.Percent + Conservative.Percent +
+                 LibDem.and.Green.Percent + Nationalist.Percent + Other.Party.Percent + 
+                 White.British.Percent + Non.British.White.UKborn.Percent + EUborn.Immigrants.Percent +
+                 RoW.Immigrants.Percent + Total.EU.Funding.Millions + Avg.Property.Price.kGBP + 
+                 Avg.Income.kGBP + British.Passport.Percent + Passport.Percent + AB.Percent + C1.Percent + 
+                 C2.Percent + DE.Percent, data = ref_train)
+tree_pred1 <- predict(tree1, newdata = ref_test)
+error_tree1 <- (ref_test$Leave.Percent - tree_pred1)
+tree_rmse1 <- sqrt(mean(error_tree1^2))
+names(tree_rmse1) <- c("RMSE")
+knitr::kable(tree_rmse1, caption = "RMSE for Test Data")
+prp(tree1, main = "CART Model for Leave.Percent")
+
+options(warn=0)
+```
+
+
+Surprisingly in this model, making all of the variables available not only does not create a more complicated tree, but also results in a worse RMSE.  It's interesting to note that in both CART trees Education fields are in more than one level of the tree.  Therefore it's worth investigating a polynomial regression model.  
+  
+  
+### Random Forest Model
+
+Generally a CART decision tree can result can be improved by using a Random Forest approach which constructs a multitude of decision trees.  In this case I've taken 500 trees and used a minimum node size of 20.  In the first case I've taken just the variables used in the best linear regression model.
+
+
+```{r Random Forest Model1, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+rftree <- randomForest(Leave.Percent ~ Age.16.to.24.Percent + Age.35.to.54.Percent + Age.75.plus.Percent + 
+                Employee.Percent + Retired.Percent + Degree.Percent + Conservative.Percent + 
+                Nationalist.Percent + Non.British.White.UKborn.Percent + RoW.Immigrants.Percent + 
+                Avg.Income.kGBP + C1.Percent, data = ref_train, nodesize = 20, ntree = 500)
+rftree_pred <- predict(rftree, newdata = ref_test)
+error_rftree <- (ref_test$Leave.Percent - rftree_pred)
+rftree_rmse <- sqrt(mean(error_rftree^2))
+names(rftree_rmse) <- c("RMSE")
+knitr::kable(rftree_rmse, caption = "RMSE for Test Data")
+
+options(warn=0)
+```
+
+This Random Forest which uses the Linear Regression model variables is an improvement on the CART RMSE but still has a way to go to improve on the linear model.
+
+In this second model I've taken all variables.
+
+
+```{r Random Forest Model2, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+rftree1 <- randomForest(Leave.Percent ~ Turnout.Percent + Age.16.to.24.Percent + Age.25.to.34.Percent + 
+                         Age.35.to.54.Percent + Age.55.to.64.Percent + Age.65.to.74.Percent + 
+                         Age.75.plus.Percent + Employee.Percent + SelfEmployed.Percent + Unemployed.Percent +
+                         Student.Percent + Retired.Percent + Degree.Percent + Formal.Education.to.16.Percent +
+                         Conservative.Percent + LibDem.and.Green.Percent + Nationalist.Percent +
+                         Other.Party.Percent + White.British.Percent + Non.British.White.UKborn.Percent +
+                         EUborn.Immigrants.Percent + RoW.Immigrants.Percent + Total.EU.Funding.Millions +
+                         Avg.Property.Price.kGBP + Avg.Income.kGBP + British.Passport.Percent + 
+                         Passport.Percent + AB.Percent + C1.Percent + C2.Percent + DE.Percent, 
+                         data = ref_train, nodesize = 20, ntree = 500, importance = TRUE)
+rftree1_pred <- predict(rftree1, newdata = ref_test)
+error_rftree1 <- (ref_test$Leave.Percent - rftree1_pred)
+rftree1_rmse <- sqrt(mean(error_rftree1^2))
+names(rftree1_rmse) <- c("RMSE")
+knitr::kable(rftree1_rmse, caption = "RMSE for Test Data")
+
+options(warn=0)
+```
+
+
+Using all variables improves the Random Forest RMSE but is still behind the linear model.  But which variables are important according to Random Forest?   
+   
+   
+####  Importance
+
+```{r Random Forest Importance, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+import_rftree1 <- as.data.frame(importance(rftree1))
+names(import_rftree1) <- c("IncMSE", "IncNodePurity")
+import_rftree1$Purity.Rank <- NA
+rank.order.purity <- order(-import_rftree1$IncNodePurity)
+import_rftree1$MSE.Rank <- NA
+rank.order.mse <- order(-import_rftree1$IncMSE)
+import_rftree1$Purity.Rank[rank.order.purity] <- 1:nrow(import_rftree1)
+import_rftree1$MSE.Rank[rank.order.mse] <- 1:nrow(import_rftree1)
+knitr::kable(import_rftree1, caption = "Variable Importance")
+varImpPlot(rftree1, n.var = 15, main = "Top 15 Variables by Importance", cex = 0.8)
+
+options(warn=0)
+```
+  
+  
+  
+### Polynomial Regression
+
+In the CART model there is a repetition of variables, particularly the Degree.Percent field.  After trying a number of models starting from the linear regression the best one I found is as follows:
+
+        Age.16.to.24.Percent + Age.35.to.54.Percent + Employee.Percent + Retired.Percent 
+      + (Degree.Percent)^2 + Conservative.Percent + (Nationalist.Percent)^2 + RoW.Immigrants.Percent 
+      + Avg.Income.kGBP + C1.Percent
+
+(This time, unlike in the linear regression, removing Age.75.plus.Percent and Non.British.White.UKborn.Percent results in an improvement.)   
+  
+```{r Polynomial Model1, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+poly_model <- lm(Leave.Percent ~ poly(Degree.Percent, 2, raw = TRUE) + Age.16.to.24.Percent + 
+                    Age.35.to.54.Percent + Employee.Percent + Retired.Percent + Conservative.Percent + 
+                    poly(Nationalist.Percent, 2, raw = TRUE) + RoW.Immigrants.Percent + 
+                    Avg.Income.kGBP + C1.Percent, data = ref_train)
+
+pander(poly_model, split.table = Inf, pandoc.header("Training Data Coefficients", 4))
+summary_poly_model <- data.frame(summary(poly_model)$sigma, summary(poly_model)$r.squared, summary(poly_model)$adj.r.squared)
+names(summary_poly_model) <- c("RMSE", "R-Squared", "Adj.R-Squared")
+knitr::kable(summary_poly_model, caption = "Summary Stats on Training Data for Polynomial Regression Model")
+
+ref_poly_predict <- predict(poly_model, ref_test)
+error_poly <- (ref_test$Leave.Percent - ref_poly_predict)
+test_poly_model <- sqrt(mean(error_poly^2))
+names(test_poly_model) <- c("RMSE")
+knitr::kable(test_poly_model, caption = "RMSE for Test Data")
+
+options(warn=0)
+```
+
+This gives an improvement in RMSE (0.10 better) for both Training and Test data as well as having a slightly better Adjusted R-Squared (0.005 better). So as this is an improvement in both Test and Training data we can take this now as the leading model (without having to run a cross validation check).
+
+So the fitted model, with the coefficients taken from the Estimate column, is the formula:
+
+      Leave.Percent = 19.319672 + 0.584291 * Age.16.to.24.Percent + 0.48336 * 
+                    Age.35.to.54.Percent + 0.191375 * Employee.Percent + 0.950506 * Retired.Percent -   
+                    1.240066 * Degree.Percent + 0.006702 * (Degree.Percent)^2 + 0.16532 * Conservative.Percent 
+                    + 1.190884 * Nationalist.Percent - 0.018668 * (Nationalist.Percent)^2 + 0.251072  
+                    * RoW.Immigrants.Percent + 0.109659 * Avg.Income.kGBP - 0.300418 * C1.Percent
+  
+  
+#### Error Distribution in Polynomial Model
+
+
+```{r Polynomial Errors, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+regress_errors_poly <- data.frame(ref_test$Leave.Percent, ref_poly_predict, error_poly)
+names(regress_errors_poly) <- c("Actual.Leave.Percent", "Predicted.Leave.Percent", "Error")
+ggplot(regress_errors_poly, aes(x = Actual.Leave.Percent, y = Predicted.Leave.Percent)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1)
+
+
+ggplot(regress_errors_poly, aes(x = Actual.Leave.Percent, y = error_poly)) +
+  geom_point() +
+  geom_hline(yintercept = 0)
+
+##  What are the biggest errors?
+large_poly_error <- as.data.frame(subset(error_poly, abs(error_poly) > 4))
+large_poly_error$X <- as.integer(rownames(large_poly_error))
+large_poly_error <- left_join(x = large_poly_error, y = ref_test, by = c("X" = "X"))
+large_poly_error <- large_poly_error[, c(1, 6, 13)]
+names(large_poly_error) <- c("Error.vs.Model", "LA Name", "Leave.Percent")
+knitr::kable(large_poly_error, caption = "Errors vs Model > 4%")
+
+
+options(warn=0)
+```
+
+Again we have no discernible pattern to the distribution of errors and so conclude that the model doesn't have a noticeable bias.
+
+The size of the highest errors have reduced overall, but Thurrock must have got worse by more than 1%.
+  
+  
+  
+## Ridge Regression, Lasso and Elastic Net
+
+With these regressions penalties are used to reduce the risk of overfitting.  Ridge regression penalises large coefficients, Lasso penalises the number of variables used and Elastic Net is a combination of ridge and lasso.
+
+With these methods it's also helpful to create additional features (or combinations of variables).  In order to decide which features to create I've been influenced by logic (for example the ration of average house prices to average salary gives a measure of how well off someone would feel) and by investigating whether combinations with relatively low correlation, but some importance indicated from the Random Forest methodology, have improved the RMSE for Ridge regression.
+
+
+|  Additional Feature           | Definition                                       | 
+|:------------------------------|--------------------------------------------------|
+| House.Price.Ratio             |Avg.Property.Price.kGBP / Avg.Income.kGBP         |
+| House.minus.Income            |Avg.Property.Price.kGBP - Avg.Income.kGBP         |
+| Retired.minus.Student         |Retired.Percent - Student.Percent                 |
+| Nationalist.minus.LibDem      |Nationalist.Percent - LibDem.and.Green.Percent    |
+| Under.35                      |Age.16.to.24.Percent + Age.25.to.34.Percent       |
+| Immigrants                    |EUborn.Immigrants.Percent + RoW.Immigrants.Percent|
+| SelfEmployed.plus.Student     |SelfEmployed.Percent + Student.Percent            |
+| Unemployed.plus.Retired       |Unemployed.Percent + Retired.Percent              |
+| Conservative.plus.Nationalist |Conservative.Percent + Nationalist.Percent        |
+| Funding.by.Income             |Total.EU.Funding.Millions * Avg.Income.kGBP       |
+| LibDem.plus.RoW               |LibDem.and.Green.Percent + RoW.Immigrants.Percent |
+| LibDem.plus.Retired           |LibDem.and.Green.Percent + Retired.Percent        |
+| Nationalist.Squared           |(Nationalist.Percent) ^2                          |
+| Degree.Squared                |(Degree.Percent) ^2                               |
+
+
+Apart from the coefficients assigned to modeled variables there are two tuning variables: 
+
+  1) Lambda which defines the penalty ratio.  This can take any value greater than zero - however after running preliminary tests I've narrowed the value down to between 0 and 1 and have gone with smaller increments to increase the fine-tuning.
+    
+  2) Alpha, which defines whether a model is Ridge (alpha = 0), Lasso (alpha = 1) or somewhere in between 0 and 1 for a hybrid called Elastic Net.  
+
+
+### Ridge Regression
+
+```{r Ridge, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ref_train <- mutate(ref_train, House.Price.Ratio = (Avg.Property.Price.kGBP / Avg.Income.kGBP))
+ref_train <- mutate(ref_train, Retired.minus.Student = (Retired.Percent - Student.Percent))
+ref_train <- mutate(ref_train, House.minus.Income = (Avg.Property.Price.kGBP - Avg.Income.kGBP))
+ref_train <- mutate(ref_train, Nationalist.minus.LibDem = (Nationalist.Percent - LibDem.and.Green.Percent))
+ref_train <- mutate(ref_train, Under.35 = (Age.16.to.24.Percent + Age.25.to.34.Percent))
+ref_train <- mutate(ref_train, Immigrants = (EUborn.Immigrants.Percent + RoW.Immigrants.Percent))
+ref_train <- mutate(ref_train, SelfEmployed.plus.Student = (SelfEmployed.Percent + Student.Percent))
+ref_train <- mutate(ref_train, Unemployed.plus.Retired = (Unemployed.Percent + Retired.Percent))
+ref_train <- mutate(ref_train, Conservative.plus.Nationalist = (Conservative.Percent + Nationalist.Percent))
+ref_train <- mutate(ref_train, Funding.by.Income = (Total.EU.Funding.Millions * Avg.Income.kGBP))
+ref_train <- mutate(ref_train, LibDem.plus.RoW = (LibDem.and.Green.Percent + RoW.Immigrants.Percent))
+ref_train <- mutate(ref_train, LibDem.plus.Retired = (LibDem.and.Green.Percent + Retired.Percent))
+ref_train <- mutate(ref_train, Nationalist.Squared = (Nationalist.Percent * Nationalist.Percent))
+ref_train <- mutate(ref_train, Degree.Squared = (Degree.Percent * Degree.Percent))
+
+ref_test <- mutate(ref_test, House.Price.Ratio = (Avg.Property.Price.kGBP / Avg.Income.kGBP))
+ref_test <- mutate(ref_test, Retired.minus.Student = (Retired.Percent - Student.Percent))
+ref_test <- mutate(ref_test, House.minus.Income = (Avg.Property.Price.kGBP - Avg.Income.kGBP))
+ref_test <- mutate(ref_test, Nationalist.minus.LibDem = (Nationalist.Percent - LibDem.and.Green.Percent))
+ref_test <- mutate(ref_test, Under.35 = (Age.16.to.24.Percent + Age.25.to.34.Percent))
+ref_test <- mutate(ref_test, Immigrants = (EUborn.Immigrants.Percent + RoW.Immigrants.Percent))
+ref_test <- mutate(ref_test, SelfEmployed.plus.Student = (SelfEmployed.Percent + Student.Percent))
+ref_test <- mutate(ref_test, Unemployed.plus.Retired = (Unemployed.Percent + Retired.Percent))
+ref_test <- mutate(ref_test, Conservative.plus.Nationalist = (Conservative.Percent + Nationalist.Percent))
+ref_test <- mutate(ref_test, Funding.by.Income = (Total.EU.Funding.Millions * Avg.Income.kGBP))
+ref_test <- mutate(ref_test, LibDem.plus.RoW = (LibDem.and.Green.Percent + RoW.Immigrants.Percent))
+ref_test <- mutate(ref_test, LibDem.plus.Retired = (LibDem.and.Green.Percent + Retired.Percent))
+ref_test <- mutate(ref_test, Nationalist.Squared = (Nationalist.Percent * Nationalist.Percent))
+ref_test <- mutate(ref_test, Degree.Squared = (Degree.Percent * Degree.Percent))
+
+ref_train1 <- ref_train[, c(12, 14:24, 26:34, 36:41, 43:61)]
+ref_test1 <- ref_test[, c(12, 14:24, 26:34, 36:41, 43:61)]
+
+xtrain <- model.matrix(Leave.Percent~., ref_train1)[,-1]
+xtest <- model.matrix(Leave.Percent~., ref_test1)[,-1]
+ytrain <- ref_train$Leave.Percent
+ytest <- ref_test$Leave.Percent
+lambda <- seq(0.001, 1, length = 1000)  
+## An initial more broad ranging set of lambda indicated that it would be within this range
+
+##  Ridge Regression
+ridge.mod <- glmnet(xtrain, ytrain, alpha = 0, lambda = lambda)
+
+#  Find the best lambda from the options via cross-validation
+cv.out <- cv.glmnet(xtrain, ytrain, alpha = 0)
+bestlam <- cv.out$lambda.min
+
+#make predictions
+ridge.pred <- predict(ridge.mod, s = bestlam, newx = xtest)
+test_ridge_model <- sqrt(mean((ridge.pred-ytest)^2))
+test_ridge_model <- data.frame(bestlam, test_ridge_model)
+names(test_ridge_model) <- c("Lambda", "RMSE")
+knitr::kable(test_ridge_model, caption = "RMSE and tuning variables for Test Data using Ridge Regression")
+
+
+#Take a look at the coefficients
+k_ridge <- predict(ridge.mod, type = "coefficients", s = bestlam)
+k_ridge1 <- data.frame(k_ridge@Dimnames[[1]])
+k_ridge1 <- k_ridge1[(k_ridge@i)+1,]
+k_ridge1 <- data.frame(k_ridge1, k_ridge@x)
+names(k_ridge1) <- c("Feature", "Coefficient")
+knitr::kable(k_ridge1, caption = "Coefficients for Ridge Regression model")
+
+
+options(warn=0)
+```
+
+
+
+### Lasso Regression
+
+```{r Lasso, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+lasso.mod <- glmnet(xtrain, ytrain, alpha = 1, lambda = lambda)
+cv.out1 <- cv.glmnet(xtrain, ytrain, alpha = 1)
+bestlam1 <- cv.out1$lambda.min
+lasso.pred <- predict(lasso.mod, s = bestlam1, newx = xtest)
+test_lasso_model <- sqrt(mean((lasso.pred-ytest)^2))
+test_lasso_model <- data.frame(bestlam1, test_lasso_model)
+names(test_lasso_model) <- c("Lambda", "RMSE")
+knitr::kable(test_lasso_model, caption = "RMSE and tuning variables for Test Data using Lasso Regression")
+
+##  This is a little worse than the ridge regression
+k_lasso <- predict(lasso.mod, type = "coefficients", s = bestlam1)
+k_lasso1 <- data.frame(k_lasso@Dimnames[[1]])
+k_lasso1 <- k_lasso1[(k_lasso@i)+1,]
+k_lasso1 <- data.frame(k_lasso1, k_lasso@x)
+names(k_lasso1) <- c("Feature", "Coefficient")
+knitr::kable(k_lasso1, caption = "Coefficients for Lasso Regression model")
+
+options(warn=0)
+```
+
+NB Not all variables have a coefficient as Lasso chooses to reduce the number of variables in the model using penalties.
+
+
+
+
+### Elastic Net Regression
+
+```{r Elastic Net, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+best_rmse = 10
+for (i in 1:1000) {
+  el.net <- glmnet(xtrain, ytrain, alpha = i/1000, lambda = lambda)
+  cv.out2 <- cv.glmnet(xtrain, ytrain, alpha = i/1000)
+  bestlam2 <- cv.out2$lambda.min
+  el.net.pred <- predict(el.net, s = bestlam2, newx = xtest)
+  if (best_rmse > sqrt(mean((el.net.pred-ytest)^2))) {
+    alpha.best <- i/1000
+    lambda.best <- bestlam2
+    best_rmse <- sqrt(mean((el.net.pred-ytest)^2))
+  }
+}
+test_el_net_model <- data.frame(alpha.best, lambda.best, best_rmse)
+names(test_el_net_model) <- c("Alpha", "Lambda", "RMSE")
+knitr::kable(test_el_net_model, caption = "RMSE and tuning variables for Test Data using Elastic Net Regression")
+
+el.net.best <- glmnet(xtrain, ytrain, alpha = alpha.best, lambda = lambda.best)
+k_elnet <- predict(el.net.best, type = "coefficients")
+k_elnet1 <- data.frame(k_elnet@Dimnames[[1]])
+k_elnet1 <- k_elnet1[(k_elnet@i)+1,]
+k_elnet1 <- data.frame(k_elnet1, k_elnet@x)
+names(k_elnet1) <- c("Feature", "Coefficient")
+knitr::kable(k_elnet1, caption = "Coefficients for Elastic Net Regression model")
+
+options(warn=0)
+```
+
+
+Unfortunately this doesn't give quite as good an RMSE on the test data as the Polynomial model.  
+  
+  
+#### Error Distribution in Elastic Net Model
+
+
+```{r Elastic Net Errors, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ref_elnet_predict <- predict(el.net.best, newx = xtest)
+error_elnet <- (ytest - ref_elnet_predict)
+
+
+regress_errors_elnet <- data.frame(ytest, ref_elnet_predict, error_elnet)
+names(regress_errors_elnet) <- c("Actual.Leave.Percent", "Predicted.Leave.Percent", "Error")
+ggplot(regress_errors_elnet, aes(x = Actual.Leave.Percent, y = Predicted.Leave.Percent)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1)
+
+
+ggplot(regress_errors_elnet, aes(x = Actual.Leave.Percent, y = error_elnet)) +
+  geom_point() +
+  geom_hline(yintercept = 0)
+
+##  What are the biggest errors?
+large_elnet_error <- data.frame(error_elnet, ytest)
+large_elnet_error <- subset(large_elnet_error, abs(large_elnet_error$s0) > 4)
+large_elnet_error <- left_join(x = large_elnet_error, y = ref_test, by = c("ytest" = "Leave.Percent"))
+large_elnet_error <- large_elnet_error[, c(1, 2, 7)]
+names(large_elnet_error) <- c("Error.vs.Model", "Leave.Percent", "LA Name")
+knitr::kable(large_elnet_error, caption = "Errors vs Model > 4%")
+
+
+options(warn=0)
+```
+
+Again we have no discernible pattern to the distribution of errors and so conclude that the model doesn't have a noticeable bias.
+
+Overall the largest errors are slightly worse than for the polynomial model.  6 shared Local Authorities are all worse, then there were 2 areas which improved to be less than 4% and 2 areas which worsened to be included in this list.  
+  
+  
+##  Summary of Model Results
+
+
+|  Model Type                   | Best RMSE | Notes                                         | 
+|:------------------------------|-----------|-----------------------------------------------|
+| Linear Regression             | 2.344537  | Model with 12 variables                       |
+| CART                          | 4.16874   | The model only gives 7 different outcomes     |
+| Random Forest                 | 3.201406  | 5 variables with more than 10% IncMSE         |
+| Polynomial Regression         | 2.240775  | Model with 10 linear and 2 2nd order variables|
+| Ridge Regression              | 2.629288  | 14 additional features added                  |
+| Lasso Regression              | 2.483642  | 16 features used in model                     |
+| Elastic Net Regression        | 2.305884  | 31 features used in model                     |
+
+However it doesn't seem right that the polynomial model result should be better than the Elastic Net one - as the polynomial terms have been added as additional features and the Elastic Net family is a generalised regression form I would have expected it to be at least as good.
+
+The only reason appears to be that the Elastic Net Model was optimised across the whole of the data whereas the results in my comparison are for a single test data set.  To test this theory I've calculated the RMSE of the two models across all of the data.
+
+```{r Elnet Poly Comparision, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ref_full_set <- rbind(ref_train1, ref_test1)
+
+ref_full_set <- mutate(ref_full_set, Poly.Pred.Leave = (19.319672 + 0.584291 * Age.16.to.24.Percent + 0.48336 * 
+                    Age.35.to.54.Percent + 0.191375 * Employee.Percent + 0.950506 * Retired.Percent - 1.240066  
+                    * Degree.Percent + 0.006702 * (Degree.Percent)^2 + 0.16532 * Conservative.Percent + 1.190884
+                    * Nationalist.Percent - 0.018668 * (Nationalist.Percent)^2 + 0.251072 * 
+                      RoW.Immigrants.Percent + 0.109659 * Avg.Income.kGBP - 0.300418 * C1.Percent))
+
+ref_full_set <- mutate(ref_full_set, Elnet.Pred.Leave = (20.7216184 + 0.4048245 * Age.16.to.24.Percent +  
+                 0.4904544 * Age.35.to.54.Percent - 0.0017435 * Age.55.to.64.Percent - 0.0424295 * 
+                 Age.75.plus.Percent + 0.0687596 * Employee.Percent - 0.0716694 * SelfEmployed.Percent + 
+                 0.6806234 * Unemployed.Percent + 0.8358692 * Retired.Percent - 1.0643950 * Degree.Percent + 
+                 0.1270438 * Conservative.Percent - 0.0027423 * Labour.Percent + 1.0574917 * 
+                 Nationalist.Percent - 0.0276940 * Other.Party.Percent + 0.1070027 * White.British.Percent - 
+                 0.2085600 * Non.British.White.UKborn.Percent + 0.0756912 * RoW.Immigrants.Percent - 
+                 0.0014704 * Total.EU.Funding.Millions - 0.0468445 * British.Passport.Percent + 0.0246168 * 
+                 Passport.Percent - 0.2417771 * C1.Percent + 0.0954627 * C2.Percent - 0.1526199 * DE.Percent -
+                 0.2839498 * House.Price.Ratio + 0.0034809 * House.minus.Income + 0.2953199 * Immigrants +
+                 0.0013664 * Unemployed.plus.Retired + 0.0530070 * Conservative.plus.Nationalist + 0.0000035 *
+                 Funding.by.Income + 0.0231589 * LibDem.plus.RoW - 0.0157875 * Nationalist.Squared + 0.0045896
+                 * Degree.Squared))
+
+ref_full_set <- mutate(ref_full_set, Poly.Error2 = (Leave.Percent - Poly.Pred.Leave)^2)
+ref_full_set <- mutate(ref_full_set, Elnet.Error2 = (Leave.Percent - Elnet.Pred.Leave)^2)
+
+RMSE_full_set_poly <- sqrt(mean(ref_full_set[,"Poly.Error2"]))
+RMSE_full_set_elnet <- sqrt(mean(ref_full_set[,"Elnet.Error2"]))
+RMSE_full_set <- data.frame(RMSE_full_set_poly, RMSE_full_set_elnet)
+names(RMSE_full_set) <- c("Polynomial RMSE", "Elastic Net RMSE")
+knitr::kable(RMSE_full_set, caption = "RMSE across full dataset for best Polynomial and Elastic Net models")
+
+options(warn=0)
+```
+
+So the Elastic Net RMSE just happened to be relatively bad for the selected Test data subset; taken over all the data, the calculated model gives a better RMSE result than the Polynomial one and therefore is probably a higher performing predictor.  
+  
+  
+
+# Conclusions
+
+##  Understanding the Referendum
+
+Winston Churchill gave us two key quotes about the process of democracy:
+
+    "It has been said that democracy is the worst form of government; except all the others that have been tried."
+  
+    and "The best argument against democracy is a five-minute conversation with the average voter."
+  
+Both of these offer a little insight to this referendum project which I'll highlight under "Sampling Bias" and "Logical Voting".
+
+### Sampling Bias
+
+The exercise of democracy allows a voter to not vote.  In statistical terms this means that the actual results are not formed from the population statistics and may not be an unbiased sample of that population.  That is to say that in a given area there might be particular reasons why a particular cluster of the electorate are less likely to vote.  This may not be the same reason in different local authorities.  Unfortunately data on the voting sample is never made available as this would be considered "undemocratic" for the way in which it could impinge on voting anonymity. 
+
+Although we can't have any firm proof of biased samples we've seen that the overall correlations to Turnout Percent suggest the following pairings:
+
+
+|  Lower Turnout Percent        | Higher Turnout Percent        | 
+|:------------------------------|-------------------------------|
+| Age 35 and under              | Age 55 and over               |
+| Labour Party support          | Conservative Party support    |
+| Unemployed                    | Self Employed                 |
+| Non White British             | White British                 |
+ 
+Please note that I'm not saying that there's a causal link here and I'm not claiming that the group least likely to vote are Non-white-British Labour-supporting unemployed under 35s.  Instead I'm simply saying that, for example, areas with a higher percentage of under 35s are more likely to have seen lower turnout percentages.  Although suggestive that there might be a lower Turnout in under 35s this correlation is not a proof of that.
+
+This idea of sampling bias is of fundamental importance in understanding our analyses and models - the Turnout Percent ranges from 59.2% up to 83.6% in England & Wales with an average of 73.0% so there is always a considerable amount of the population which is not directly linked to the referendum vote.
+
+Although the data modeling resulted in high (Adjusted) R-squared values I was personally a little disappointed by its errors - the best model has an average RMSE of 2.20% or an average absolute error of 1.76%.  I do believe that a fair amount of this error comes from the local authority voting (ie sampling) bias.  However because of voting confidentiality we will never know this for sure.  
+  
+  
+### Logical Voting
+
+Secondly as I posited in the introduction, the campaigns run ahead of the referendum did not appear to provide the relevant facts and figures needed for voters to make a data-driven decision.  
+
+Therefore we find that not all propositions that would appear to be logical have evidence supporting them.
+
+|  Proposition                    | Idea                         | Evidence                            | 
+|:--------------------------------|------------------------------|-------------------------------------|
+|Older people voted heavily to leave and younger people voted to remain | Younger people see EU as an opportunity, older people remember pre-EU nostalgically| The correlations support this but are not very convincing. This could be linked to Turnout sampling|
+| Students voted Remain and Retired people voted Leave | Similar to above| This is generally supported by correlations, but only about +/- 0.5|
+| The Unemployed voted Leave      | EU immigration is a threat to jobs| Not at all supported by correlation |
+| Higher education levels correspond to a lower Leave vote and lower levels to higher Leave| University broadens the mind | There are strong correlations in support of these Propositions    |                        |
+| Higher levels of EU immigrants in an area increases Leave vote | Reducing immigration was meant to be a key driver | The correlation is negative - higher immigrant levels link to lower Leave|
+| Higher levels of RoW immigrants increases the Leave vote  | RoW immigrants are often visibly non-British  | The correlation is negative - higher immigrant levels link to lower Leave|
+| The higher the percentage of passport holders the lower the Leave vote | Travel for business and leisure would become more difficult after EU exit | There is a reasonable correlation to support the proposition  |
+| Larger AB & C2 social groupings lead to lower Leave votes  | AB & C2 groups are skilled so jobs less threatened by EU immigrants  | There's a fairly strong correlation for AB, but C2 is a reasonably strong correlation for higher Leave |
+| High EU Funding locally leads to a lower Leave vote  | Recognition of local benefits| The correlation isn't strong, and would be weaker still without the university town outliers   |
+| Lower average House Prices and Income are linked to a higher Leave vote | Poorer areas might resent the monies sent out of the UK to the EU  | Although not super strong the correlations tend to confirm the proposition  | 
+
+So it's worth calling out that contrary to expectations:
+
+* Higher unemployment had virtually no correlation to higher Leave
+* Higher levels of immigrants did not correlate to higher Leave - in fact there was a reasonable negative correlation.  Although not causal this correlation suggests that the more immigrants there are in an area the less need there is to vote against immigration (pro-Leave).  (Maybe these higher numbers of immigrants mean that more people see a "personal face" to the issue).
+* Higher levels of EU funding locally had little correlation to higher Remain  
+  
+
+##  Best Model
+
+Our best predictive model comes from an Elastic Net approach with the formula:
+
+    Leave.Percent = 20.7216184 + 0.4048245 * Age.16.to.24.Percent + 0.4904544 * Age.35.to.54.Percent 
+                  - 0.0017435 * Age.55.to.64.Percent - 0.0424295 * Age.75.plus.Percent 
+                  + 0.0687596 * Employee.Percent - 0.0716694 * SelfEmployed.Percent 
+                  + 0.6806234 * Unemployed.Percent + 0.8358692 * Retired.Percent - 1.0643950 * Degree.Percent 
+                  + 0.1270438 * Conservative.Percent - 0.0027423 * Labour.Percent 
+                  + 1.0574917 * Nationalist.Percent - 0.0276940 * Other.Party.Percent 
+                  + 0.1070027 * White.British.Percent - 0.2085600 * Non.British.White.UKborn.Percent 
+                  + 0.0756912 * RoW.Immigrants.Percent - 0.0014704 * Total.EU.Funding.Millions 
+                  - 0.0468445 * British.Passport.Percent + 0.0246168 * Passport.Percent 
+                  - 0.2417771 * C1.Percent + 0.0954627 * C2.Percent - 0.1526199 * DE.Percent 
+                  - 0.2839498 * (Avg.Property.Price.kGBP / Avg.Income.kGBP) 
+                  + 0.0034809 * (Avg.Property.Price.kGBP - Avg.Income.kGBP) 
+                  + 0.2953199 * (EUborn.Immigrants.Percent + RoW.Immigrants.Percent) 
+                  + 0.0013664 * (Unemployed.Percent + Retired.Percent) 
+                  + 0.0530070 * (Conservative.Percent + Nationalist.Percent) 
+                  + 0.0000035 * (Total.EU.Funding.Millions * Avg.Income.kGBP) 
+                  + 0.0231589 * (LibDem.and.Green.Percent + RoW.Immigrants.Percent) 
+                  - 0.0157875 * (Nationalist.Percent)^2 + 0.0045896 * (Degree.Percent)^2 
+ 
+ 
+This gives a RMSE of 2.20% across the entire dataset.  
+
+If we look at a geographic view of the errors in this model we can see that although there are no regional patterns to the prediction errors, there are a few potential clusterings of under predictions and over predictions which might lead to a further refinement opportunity.  
+  
+  
+```{r Error Mqp, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+coord_leave <- read.csv("coord_leave.csv")
+
+referendum <- mutate(referendum, Elastic.Net.Error = (Leave.Percent - (20.7216184 + 0.4048245 * Age.16.to.24.Percent 
+                 + 0.4904544 * Age.35.to.54.Percent - 0.0017435 * Age.55.to.64.Percent - 0.0424295 * 
+                 Age.75.plus.Percent + 0.0687596 * Employee.Percent - 0.0716694 * SelfEmployed.Percent + 
+                 0.6806234 * Unemployed.Percent + 0.8358692 * Retired.Percent - 1.0643950 * Degree.Percent + 
+                 0.1270438 * Conservative.Percent - 0.0027423 * Labour.Percent + 1.0574917 * 
+                 Nationalist.Percent - 0.0276940 * Other.Party.Percent + 0.1070027 * White.British.Percent - 
+                 0.2085600 * Non.British.White.UKborn.Percent + 0.0756912 * RoW.Immigrants.Percent - 
+                 0.0014704 * Total.EU.Funding.Millions - 0.0468445 * British.Passport.Percent + 0.0246168 * 
+                 Passport.Percent - 0.2417771 * C1.Percent + 0.0954627 * C2.Percent - 0.1526199 * DE.Percent -
+                 0.2839498 * (Avg.Property.Price.kGBP / Avg.Income.kGBP) + 0.0034809 * 
+                 (Avg.Property.Price.kGBP - Avg.Income.kGBP) + 0.2953199 * (EUborn.Immigrants.Percent +
+                 RoW.Immigrants.Percent) + 0.0013664 * (Unemployed.Percent + Retired.Percent) + 0.0530070 *
+                 (Conservative.Percent + Nationalist.Percent) + 0.0000035 * (Total.EU.Funding.Millions * 
+                 Avg.Income.kGBP) + 0.0231589 * (LibDem.and.Green.Percent + RoW.Immigrants.Percent) - 
+                 0.0157875 * (Nationalist.Percent)^2 + 0.0045896 * (Degree.Percent)^2)))
+
+elnet_leave <- referendum[,c(4:5, 48)]
+
+coord_leave <- left_join(x = coord_leave, y = elnet_leave, by = c("LA.Name1" = "LA.Name", "LA.Code1" = "LA.Code"))
+
+ggplot(data = coord_leave, aes(x = Easting, y = Northing, color = Elastic.Net.Error)) +
+  scale_colour_gradient2(low="#22FF00", mid="white", high="#FF0000", midpoint=0) +
+  geom_point() +
+  labs(title = "Map of Prediction Errors using Elastic Net model") +
+  theme(panel.background=element_rect(fill="lightblue"))
+
+options(warn=0)
+```
+  
+  
+## Recommendations
+
+In many senses drawing conclusions and especially recommendations is a very difficult task given the nature of the project.  The referendum was a once-off event which will not be repeated unless it becomes politically expedient.  
+
+Even if there is a second confirmatory referendum in the UK the landscape will have changed - there will have been at least 3 years of deaths from the older demographics and 3 years of teenagers attaining voting age.  The information available and the implications of what it means in practice to leave the EU are much better known (if not all resolved yet).  The effect that turnout amongst certain groups may have had on the result has been discussed, although not backed up by hard data.
+
+All this to say that as the voting population has changed, the voting sample would probably change and the reasons for voting may have changed, the model would probably not be optimal for a new referendum.
+
+However even with a new referendum I would still expect to see a country deeply divided.
+
+Other countries in the EU will have looked at the process and political consequences and will undoubtedly have drawn their own conclusion that this type of referendum should be avoided at all costs.
+  
+Looking at the data from a Remain viewpoint the key recommendation has to be to target turnout in the under 35 age group.  (As backup, in an official EU survey on the 2019 EU Elections about 20% of under 39s voted compared with about 53% of over 55s).
+  
+    
+
+##  Scope for future research
+
+It could be interesting to link this project through to the results of the recent 2019 EU elections.  In particular there was a strong polarisation of votes for a newly formed "Brexit" party for those people wanting to express a strong desire to Leave the EU, and those voting for the Liberal Democrat or Green parties wanting to express a strong desire to Remain in the EU.  The two parties who are traditionally the largest (Conservative & Labour) had a much smaller return than normal and might be considered as "Referendum neutral".  Although there would only be two data points, this could still give some scope for considering if there had been any real changes of view over the UK's membership of the EU in the intervening three years.  
+
+Also in terms of sampling bias it would be very interesting to find any data available from referendum exit polls.  Due to the nature of such a survey it's likely to be limited to declared vote (Leave or Remain) together with any physical attributes (visible ethnicity, gender and approximate age) recorded by the interviewer.
+
+As mentioned above it's possible the model could be improved by clustering - as a first step using the existing regional field (at least separating London), or with a university town refinement.  Care would need to be taken not to overfit especially as the number of rows of data could become rather small once clustered.
+
