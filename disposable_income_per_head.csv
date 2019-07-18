@@ -1,0 +1,392 @@
+Region;LAU1 code;LA name;2016
+North East;E06000047;County Durham;15221
+North East;E06000005;Darlington;15487
+North East;E06000001;Hartlepool;15071
+North East;E06000002;Middlesbrough;14968
+North East;E06000057;Northumberland;18016
+North East;E06000003;Redcar and Cleveland;14529
+North East;E06000004;Stockton-on-Tees;15395
+North East;E08000037;Gateshead;15112
+North East;E08000021;Newcastle upon Tyne;16180
+North East;E08000022;North Tyneside;15370
+North East;E08000023;South Tyneside;14892
+North East;E08000024;Sunderland;14998
+North West;E06000008;Blackburn with Darwen;12450
+North West;E06000009;Blackpool;14795
+North West;E06000049;Cheshire East;22025
+North West;E06000050;Cheshire West and Chester;19372
+North West;E06000006;Halton;15396
+North West;E06000007;Warrington;19377
+North West;E07000026;Allerdale;17527
+North West;E07000027;Barrow-in-Furness;17676
+North West;E07000028;Carlisle;19534
+North West;E07000029;Copeland;17555
+North West;E07000030;Eden;19844
+North West;E07000031;South Lakeland;20382
+North West;E08000001;Bolton;15260
+North West;E08000002;Bury;15637
+North West;E08000003;Manchester;13184
+North West;E08000004;Oldham;15023
+North West;E08000005;Rochdale;15255
+North West;E08000006;Salford;18564
+North West;E08000007;Stockport;17833
+North West;E08000008;Tameside;17208
+North West;E08000009;Trafford;19021
+North West;E08000010;Wigan;15431
+North West;E07000117;Burnley;14604
+North West;E07000118;Chorley;18696
+North West;E07000119;Fylde;17640
+North West;E07000120;Hyndburn;14818
+North West;E07000121;Lancaster;16850
+North West;E07000122;Pendle;14628
+North West;E07000123;Preston;18057
+North West;E07000124;Ribble Valley;18086
+North West;E07000125;Rossendale;15285
+North West;E07000126;South Ribble;17585
+North West;E07000127;West Lancashire;18623
+North West;E07000128;Wyre;15717
+North West;E08000011;Knowsley;15317
+North West;E08000012;Liverpool;14538
+North West;E08000014;Sefton;17672
+North West;E08000013;St. Helens;15305
+North West;E08000015;Wirral;17362
+Yorkshire and The Humber;E06000011;East Riding of Yorkshire;18427
+Yorkshire and The Humber;E06000010;Kingston upon Hull, City of;13380
+Yorkshire and The Humber;E06000012;North East Lincolnshire;15039
+Yorkshire and The Humber;E06000013;North Lincolnshire;14953
+Yorkshire and The Humber;E06000014;York;18070
+Yorkshire and The Humber;E07000163;Craven;20259
+Yorkshire and The Humber;E07000164;Hambleton;20397
+Yorkshire and The Humber;E07000165;Harrogate;21292
+Yorkshire and The Humber;E07000166;Richmondshire;21131
+Yorkshire and The Humber;E07000167;Ryedale;20366
+Yorkshire and The Humber;E07000168;Scarborough;19703
+Yorkshire and The Humber;E07000169;Selby;20773
+Yorkshire and The Humber;E08000016;Barnsley;15552
+Yorkshire and The Humber;E08000017;Doncaster;15595
+Yorkshire and The Humber;E08000018;Rotherham;15465
+Yorkshire and The Humber;E08000019;Sheffield;15057
+Yorkshire and The Humber;E08000032;Bradford;14444
+Yorkshire and The Humber;E08000033;Calderdale;16060
+Yorkshire and The Humber;E08000034;Kirklees;16107
+Yorkshire and The Humber;E08000035;Leeds;16814
+Yorkshire and The Humber;E08000036;Wakefield;15955
+East Midlands;E06000015;Derby;15078
+East Midlands;E06000016;Leicester;12848
+East Midlands;E06000018;Nottingham;12232
+East Midlands;E06000017;Rutland;18254
+East Midlands;E07000032;Amber Valley;18747
+East Midlands;E07000033;Bolsover;15487
+East Midlands;E07000034;Chesterfield;15624
+East Midlands;E07000035;Derbyshire Dales;18987
+East Midlands;E07000036;Erewash;18760
+East Midlands;E07000037;High Peak;19188
+East Midlands;E07000038;North East Derbyshire;15352
+East Midlands;E07000039;South Derbyshire;19352
+East Midlands;E07000129;Blaby;18334
+East Midlands;E07000130;Charnwood;18970
+East Midlands;E07000131;Harborough;18622
+East Midlands;E07000132;Hinckley and Bosworth;18063
+East Midlands;E07000133;Melton;18089
+East Midlands;E07000134;North West Leicestershire;18256
+East Midlands;E07000135;Oadby and Wigston;17996
+East Midlands;E07000136;Boston;16659
+East Midlands;E07000137;East Lindsey;15878
+East Midlands;E07000138;Lincoln;18247
+East Midlands;E07000139;North Kesteven;16992
+East Midlands;E07000140;South Holland;16634
+East Midlands;E07000141;South Kesteven;17145
+East Midlands;E07000142;West Lindsey;16597
+East Midlands;E07000150;Corby;18540
+East Midlands;E07000151;Daventry;19988
+East Midlands;E07000152;East Northamptonshire;18375
+East Midlands;E07000153;Kettering;18362
+East Midlands;E07000154;Northampton;20006
+East Midlands;E07000155;South Northamptonshire;20271
+East Midlands;E07000156;Wellingborough;17989
+East Midlands;E07000170;Ashfield;16405
+East Midlands;E07000171;Bassetlaw;16201
+East Midlands;E07000172;Broxtowe;19301
+East Midlands;E07000173;Gedling;19130
+East Midlands;E07000174;Mansfield;16394
+East Midlands;E07000175;Newark and Sherwood;16353
+East Midlands;E07000176;Rushcliffe;20021
+West Midlands;E06000019;Herefordshire, County of;19089
+West Midlands;E06000051;Shropshire;18856
+West Midlands;E06000021;Stoke-on-Trent;14075
+West Midlands;E06000020;Telford and Wrekin;16291
+West Midlands;E07000192;Cannock Chase;18283
+West Midlands;E07000193;East Staffordshire;18253
+West Midlands;E07000194;Lichfield;18181
+West Midlands;E07000195;Newcastle-under-Lyme;18189
+West Midlands;E07000196;South Staffordshire;18166
+West Midlands;E07000197;Stafford;18399
+West Midlands;E07000198;Staffordshire Moorlands;17670
+West Midlands;E07000199;Tamworth;18260
+West Midlands;E07000218;North Warwickshire;20624
+West Midlands;E07000219;Nuneaton and Bedworth;20471
+West Midlands;E07000220;Rugby;20935
+West Midlands;E07000221;Stratford-on-Avon;21265
+West Midlands;E07000222;Warwick;22630
+West Midlands;E08000025;Birmingham;14093
+West Midlands;E08000026;Coventry;14175
+West Midlands;E08000027;Dudley;15878
+West Midlands;E08000028;Sandwell;13164
+West Midlands;E08000029;Solihull;21927
+West Midlands;E08000030;Walsall;13791
+West Midlands;E08000031;Wolverhampton;13926
+West Midlands;E07000234;Bromsgrove;20176
+West Midlands;E07000235;Malvern Hills;19309
+West Midlands;E07000236;Redditch;19720
+West Midlands;E07000237;Worcester;20618
+West Midlands;E07000238;Wychavon;19773
+West Midlands;E07000239;Wyre Forest;18897
+East of England;E06000055;Bedford;20136
+East of England;E06000056;Central Bedfordshire;20719
+East of England;E06000032;Luton;14889
+East of England;E06000031;Peterborough;16563
+East of England;E06000033;Southend-on-Sea;19088
+East of England;E06000034;Thurrock;17507
+East of England;E07000008;Cambridge;24472
+East of England;E07000009;East Cambridgeshire;20406
+East of England;E07000010;Fenland;19399
+East of England;E07000011;Huntingdonshire;20630
+East of England;E07000012;South Cambridgeshire;21331
+East of England;E07000066;Basildon;19809
+East of England;E07000067;Braintree;18938
+East of England;E07000068;Brentwood;22940
+East of England;E07000069;Castle Point;19249
+East of England;E07000070;Chelmsford;22246
+East of England;E07000071;Colchester;19526
+East of England;E07000072;Epping Forest;24393
+East of England;E07000073;Harlow;22960
+East of England;E07000074;Maldon;21234
+East of England;E07000075;Rochford;19802
+East of England;E07000076;Tendring;16988
+East of England;E07000077;Uttlesford;23660
+East of England;E07000095;Broxbourne;23826
+East of England;E07000096;Dacorum;24056
+East of England;E07000242;East Hertfordshire;24377
+East of England;E07000098;Hertsmere;24318
+East of England;E07000099;North Hertfordshire;23554
+East of England;E07000240;St Albans;25098
+East of England;E07000243;Stevenage;23555
+East of England;E07000102;Three Rivers;24613
+East of England;E07000103;Watford;24854
+East of England;E07000241;Welwyn Hatfield;24690
+East of England;E07000143;Breckland;17225
+East of England;E07000144;Broadland;17096
+East of England;E07000145;Great Yarmouth;16411
+East of England;E07000146;King's Lynn and West Norfolk;17859
+East of England;E07000147;North Norfolk;17587
+East of England;E07000148;Norwich;18459
+East of England;E07000149;South Norfolk;17619
+East of England;E07000200;Babergh;18654
+East of England;E07000201;Forest Heath;19101
+East of England;E07000202;Ipswich;19347
+East of England;E07000203;Mid Suffolk;18850
+East of England;E07000204;St Edmundsbury;19098
+East of England;E07000205;Suffolk Coastal;18722
+East of England;E07000206;Waveney;17690
+London;E09000007;Camden;44892
+London;E09000001;City of London;56664
+London;E09000012;Hackney;20175
+London;E09000013;Hammersmith and Fulham;55552
+London;E09000014;Haringey;27179
+London;E09000019;Islington;29371
+London;E09000020;Kensington and Chelsea;62600
+London;E09000022;Lambeth;24965
+London;E09000023;Lewisham;22139
+London;E09000025;Newham;18537
+London;E09000028;Southwark;23284
+London;E09000030;Tower Hamlets;23227
+London;E09000032;Wandsworth;37288
+London;E09000033;Westminster;50910
+London;E09000002;Barking and Dagenham;19234
+London;E09000003;Barnet;27455
+London;E09000004;Bexley;20766
+London;E09000005;Brent;23580
+London;E09000006;Bromley;27169
+London;E09000008;Croydon;21766
+London;E09000009;Ealing;26655
+London;E09000010;Enfield;21444
+London;E09000011;Greenwich;21802
+London;E09000015;Harrow;23928
+London;E09000016;Havering;20095
+London;E09000017;Hillingdon;23439
+London;E09000018;Hounslow;30230
+London;E09000021;Kingston upon Thames;26947
+London;E09000024;Merton;27213
+London;E09000026;Redbridge;20933
+London;E09000027;Richmond upon Thames;33258
+London;E09000029;Sutton;24968
+London;E09000031;Waltham Forest;21595
+South East;E06000036;Bracknell Forest;23733
+South East;E06000043;Brighton and Hove;20508
+South East;E06000046;Isle of Wight;16781
+South East;E06000035;Medway;17884
+South East;E06000042;Milton Keynes;20039
+South East;E06000044;Portsmouth;15066
+South East;E06000038;Reading;24114
+South East;E06000039;Slough;22953
+South East;E06000045;Southampton;14797
+South East;E06000037;West Berkshire;22997
+South East;E06000040;Windsor and Maidenhead;24446
+South East;E06000041;Wokingham;23795
+South East;E07000004;Aylesbury Vale;26093
+South East;E07000005;Chiltern;27106
+South East;E07000006;South Bucks;27802
+South East;E07000007;Wycombe;26313
+South East;E07000061;Eastbourne;20524
+South East;E07000062;Hastings;20995
+South East;E07000063;Lewes;21104
+South East;E07000064;Rother;19988
+South East;E07000065;Wealden;20948
+South East;E07000084;Basingstoke and Deane;22783
+South East;E07000085;East Hampshire;24662
+South East;E07000086;Eastleigh;20647
+South East;E07000087;Fareham;20307
+South East;E07000088;Gosport;19687
+South East;E07000089;Hart;23528
+South East;E07000090;Havant;19645
+South East;E07000091;New Forest;23355
+South East;E07000092;Rushmoor;23466
+South East;E07000093;Test Valley;24155
+South East;E07000094;Winchester;25232
+South East;E07000105;Ashford;19843
+South East;E07000106;Canterbury;18679
+South East;E07000107;Dartford;19449
+South East;E07000108;Dover;17378
+South East;E07000109;Gravesham;18453
+South East;E07000110;Maidstone;20398
+South East;E07000111;Sevenoaks;25029
+South East;E07000112;Folkestone and Hythe;17390
+South East;E07000113;Swale;17942
+South East;E07000114;Thanet;17009
+South East;E07000115;Tonbridge and Malling;25094
+South East;E07000116;Tunbridge Wells;25407
+South East;E07000177;Cherwell;23184
+South East;E07000178;Oxford;25585
+South East;E07000179;South Oxfordshire;23358
+South East;E07000180;Vale of White Horse;23042
+South East;E07000181;West Oxfordshire;22763
+South East;E07000207;Elmbridge;29325
+South East;E07000208;Epsom and Ewell;27973
+South East;E07000209;Guildford;29223
+South East;E07000210;Mole Valley;27469
+South East;E07000211;Reigate and Banstead;27010
+South East;E07000212;Runnymede;28987
+South East;E07000213;Spelthorne;27988
+South East;E07000214;Surrey Heath;27736
+South East;E07000215;Tandridge;26830
+South East;E07000216;Waverley;27506
+South East;E07000217;Woking;28064
+South East;E07000223;Adur;21528
+South East;E07000224;Arun;20731
+South East;E07000225;Chichester;21814
+South East;E07000226;Crawley;22830
+South East;E07000227;Horsham;22886
+South East;E07000228;Mid Sussex;22839
+South East;E07000229;Worthing;21764
+South West;E06000022;Bath and North East Somerset;21955
+South West;E06000028;Bournemouth;19448
+South West;E06000023;Bristol, City of;17633
+South West;E06000052;Cornwall;17018
+South West;E06000053;Isles of Scilly;18902
+South West;E06000024;North Somerset;19982
+South West;E06000026;Plymouth;15147
+South West;E06000029;Poole;18534
+South West;E06000025;South Gloucestershire;21136
+South West;E06000030;Swindon;18536
+South West;E06000027;Torbay;17069
+South West;E06000054;Wiltshire;20292
+South West;E07000040;East Devon;18358
+South West;E07000041;Exeter;20820
+South West;E07000042;Mid Devon;18674
+South West;E07000043;North Devon;18916
+South West;E07000044;South Hams;19561
+South West;E07000045;Teignbridge;18826
+South West;E07000046;Torridge;18452
+South West;E07000047;West Devon;18492
+South West;E07000048;Christchurch;20560
+South West;E07000049;East Dorset;20555
+South West;E07000050;North Dorset;20469
+South West;E07000051;Purbeck;20956
+South West;E07000052;West Dorset;20308
+South West;E07000053;Weymouth and Portland;20443
+South West;E07000078;Cheltenham;21371
+South West;E07000079;Cotswold;21198
+South West;E07000080;Forest of Dean;19578
+South West;E07000081;Gloucester;20487
+South West;E07000082;Stroud;20196
+South West;E07000083;Tewkesbury;20205
+South West;E07000187;Mendip;19285
+South West;E07000188;Sedgemoor;18673
+South West;E07000189;South Somerset;18506
+South West;E07000190;Taunton Deane;18909
+South West;E07000191;West Somerset;17632
+Wales;W06000001;Isle of Anglesey;16468
+Wales;W06000002;Gwynedd;15188
+Wales;W06000003;Conwy;16450
+Wales;W06000004;Denbighshire;16409
+Wales;W06000005;Flintshire;17207
+Wales;W06000006;Wrexham;17019
+Wales;W06000023;Powys;16303
+Wales;W06000008;Ceredigion;16644
+Wales;W06000009;Pembrokeshire;15878
+Wales;W06000010;Carmarthenshire;15659
+Wales;W06000011;Swansea;14911
+Wales;W06000012;Neath Port Talbot;15080
+Wales;W06000013;Bridgend;15590
+Wales;W06000014;Vale of Glamorgan;15803
+Wales;W06000015;Cardiff;16769
+Wales;W06000016;Rhondda Cynon Taff;14588
+Wales;W06000024;Merthyr Tydfil;14277
+Wales;W06000018;Caerphilly;14495
+Wales;W06000019;Blaenau Gwent;14187
+Wales;W06000020;Torfaen;14355
+Wales;W06000021;Monmouthshire;17312
+Wales;W06000022;Newport;17319
+Scotland;S12000033;Aberdeen City;22508
+Scotland;S12000034;Aberdeenshire;20681
+Scotland;S12000041;Angus;16523
+Scotland;S12000035;Argyll and Bute;17787
+Scotland;S12000036;City of Edinburgh;21837
+Scotland;S12000005;Clackmannanshire;17057
+Scotland;S12000006;Dumfries and Galloway;17759
+Scotland;S12000042;Dundee City;17266
+Scotland;S12000008;East Ayrshire;16582
+Scotland;S12000045;East Dunbartonshire;19219
+Scotland;S12000010;East Lothian;20241
+Scotland;S12000011;East Renfrewshire;19208
+Scotland;S12000014;Falkirk;16516
+Scotland;S12000015;Fife;17293
+Scotland;S12000046;Glasgow City;15311
+Scotland;S12000017;Highland;18482
+Scotland;S12000018;Inverclyde;18361
+Scotland;S12000019;Midlothian;20020
+Scotland;S12000020;Moray;18284
+Scotland;S12000013;Na h-Eileanan Siar;16479
+Scotland;S12000021;North Ayrshire;16333
+Scotland;S12000044;North Lanarkshire;16171
+Scotland;S12000023;Orkney Islands;18381
+Scotland;S12000024;Perth and Kinross;19488
+Scotland;S12000038;Renfrewshire;18811
+Scotland;S12000026;Scottish Borders ;18923
+Scotland;S12000027;Shetland Islands;20124
+Scotland;S12000028;South Ayrshire;18631
+Scotland;S12000029;South Lanarkshire;17311
+Scotland;S12000030;Stirling;20165
+Scotland;S12000039;West Dunbartonshire;18434
+Scotland;S12000040;West Lothian;16390
+Northern Ireland;N09000001;Antrim and Newtownabbey;16849
+Northern Ireland;N09000011;Ards and North Down;17035
+Northern Ireland;N09000002;Armagh City, Banbridge and Craigavon;15582
+Northern Ireland;N09000003;Belfast;15565
+Northern Ireland;N09000004;Causeway Coast and Glens;15132
+Northern Ireland;N09000005;Derry City and Strabane;14036
+Northern Ireland;N09000006;Fermanagh and Omagh;14722
+Northern Ireland;N09000007;Lisburn and Castlereagh;17684
+Northern Ireland;N09000008;Mid and East Antrim;17315
+Northern Ireland;N09000009;Mid Ulster;14647
+Northern Ireland;N09000010;Newry, Mourne and Down;14721
