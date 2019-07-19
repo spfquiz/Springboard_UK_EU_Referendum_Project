@@ -62,7 +62,7 @@ The UK first applied to join the Union in 1961, but their application was vetoed
 
 In 1975 there was a UK referendum as to whether the UK should remain in the European Community (now EU).  At that time 67.23% of those voting, voted to Remain.
 
-The European Union is currently made up of 27 member countries   xx of which share a common currency, the Euro.
+The European Union is currently made up of 28 member countries 19 of which share a common currency, the Euro.
 
 ##  Background to 2016 Referendum
 
@@ -115,9 +115,7 @@ options(warn=0)
 #   Data Cleaning
 ##  Sources and Acknowledgements
 
-The clean referendum dataset comes from a series of individual sources as below.  I would like to acknowledge the sources of each of them for the work they've put in to making these data available.  In particular to John Lees-Miller, Hope Tho
-
-mas & Andrew Weeks for the work they've done in putting together the EU funding data which can be seen on the myeu.uk website.
+The clean referendum dataset comes from a series of individual sources as below.  I would like to acknowledge the sources of each of them for the work they've put in to making these data available.  In particular to John Lees-Miller, Hope Thomas & Andrew Weeks for the work they've done in putting together the EU funding data which can be seen on the myeu.uk website.
 
 
 |   Dataset                                 | Source                                                      |
