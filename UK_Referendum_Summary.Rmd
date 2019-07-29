@@ -1,0 +1,418 @@
+---
+title: "Project Summary - UK 2016 EU Referendum"
+author: "Simon Freeman"
+date: "19 juillet 2019"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+options(warn=-1)
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(leaps)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(glmnet)
+library(pander)
+library(GGally)
+
+setwd("~/Data/brexit")
+options(max.print=10000)
+
+options(warn=0)
+```
+##  2016 EU Referendum
+
+On 23rd June 2016 the UK held a referendum asking the following question: 
+
+    "Should the United Kingdom remain a member of the European Union or 
+    leave the European Union?"
+
+For the first time the preferred government option was rejected with the following results:
+
+|                         | Votes     | Percentage  |
+|:------------------------|:----------|:------------|
+|Leave                    |17 410 742 |51.89%       |
+|Remain                   |16 141 241 |48.11%       |
+
+The turnout was 72.21% out of 46 500 001 registered voters.
+
+##  Background
+
+The referendum was promised by the Conservative Party in their manifesto for the 2015 General Election to mitigate the threat of the UK Independence Party who had gained significant ground in the rise of populism in Europe following the 2007 recession.
+
+The campaigns largely appealed to emotion and few pieces of concrete information were available.
+
+Some three years later, and a couple of months after the original exit date, it is now apparent that the separation from the EU is much messier and complex than anticipated and that there is deadlock both politically and throughout the country as to what would constitute an acceptable exit.  It has also forced the resignation of the Prime Minister who was unable to steer a path through the deadlock. 
+
+##  A nation divided
+
+```{r Results Plot, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+coord_leave <- read.csv("coord_leave.csv")
+
+ggplot(data = coord_leave, aes(x = Easting, y = Northing, color = Leave.Percent)) +
+  scale_colour_gradient2(low="#22FF00", mid="white", high="#FF0000", midpoint=50) +
+  geom_point() +
+  theme(panel.background=element_rect(fill="lightblue"))
+
+
+rm("coord_leave")
+options(warn=0)
+```
+
+##  Data Cleaning
+
+Using 12 separate datasets I created a single dataset including the referendum results, political results from the 2015 elections and socio-economic data from Census, EU and UK National Statistics sources.  
+
+I acknowledge the Office for National Statistics, the Land Registry, the Electoral commission, Camden.gov.uk and the work of John Lees-Miller, Hope Thomas & Andrew Weeks who collated a dataset on EU funding in the UK.
+
+##  Fields in the Clean Dataset
+```{r Clean Data, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+referendum <- read.csv("referendum_clean.csv")
+
+col <- colnames(referendum)
+col1 <- col[c(3, 5:6, 14:47)]
+print(col1, quote = FALSE, row.names = FALSE)
+
+options(warn=0)
+```
+
+## Regional View of Results
+```{r Regional View, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ggplot(data = referendum, aes(x = Region.Name, y = Leave.Percent, color = Region.Name, fill = Region.Name)) +
+  stat_summary(fun.data = mean_sdl, col = "black") +
+  stat_summary(geom = "errorbar", fun.data = mean_sdl, col = "black", width = 0.2) +
+  geom_jitter(width = 0.2, aes(color = Region.Name, fill = Region.Name)) +
+  labs(title = "Distribution of Leave Percentage by Region") +
+  theme(axis.text.x = element_text(angle = 30))
+
+options(warn=0)
+```
+
+##  Regional View2
+- London - lowest average Leave; widest distribution of results; has highest frequency of low Leave Percentages
+- West Midlands - highest average Leave; only one Local Authority (Warwick) for Remain
+- North East - smallest range of results; only one Local Authority (Newcastle upon Tyne) for Remain
+- Wales - tightest grouping of results; one Local Authority (Cardiff) outside of the error bars
+- Results over the error bar range - Boston in East and Havering in London
+- Results over the error bar range - including Cambridge, Oxford, Brighton, Bristol, Cardiff, Manchester, York, Liverpool.  This list puts one in mind of universities.
+
+
+##  Regional View with Student Populations
+```{r Regional Student View, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ggplot(data = referendum, aes(x = Region.Name, y = Leave.Percent, color = Student.Percent)) +
+  stat_summary(fun.data = mean_sdl, col = "black") +
+  stat_summary(geom = "errorbar", fun.data = mean_sdl, col = "black", width = 0.2) +
+  scale_colour_gradient2(low="#22FF00", mid="white", high="#FF0000", midpoint=8.8) +
+  geom_jitter(width = 0.2) +
+  labs(title = "Distribution of Leave Percentage by Region") +
+  theme(axis.text.x = element_text(angle = 30))
+
+options(warn=0)
+```
+
+##  Correlation to Leave Percent
+```{r Leave Correlation, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+##  Correlation against Leave Percent
+referendum.corr1 <- referendum[, c(6, 12, 14:47)]
+ref_corr <- as.data.frame(cor(referendum.corr1))
+
+ref_corr_leave <- ref_corr[2, ]
+ref_corr_leave <- gather(data = ref_corr_leave, key = "Variable", value = "Correlation")
+ref_corr_leave <- mutate(ref_corr_leave, Abs.Correlation = abs(Correlation))
+ref_corr_leave <- ref_corr_leave[c(1,3:36),]
+
+ggplot(data = ref_corr_leave, aes(y = Variable, x = Correlation, color = Correlation)) +
+  scale_colour_gradient2(low="#FF0000", mid="white", high="#22FF00", midpoint=0) +
+  geom_point() +
+  labs(title = "Correlation to Leave Percentage for each variable")
+
+options(warn=0)
+```
+
+##  Highest Correlations to Leave Percent
+Please note that a high correlation does not mean that the Leave.Percent is caused by the other field
+```{r Top Leave Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ref_corr_leave <- ref_corr_leave[order(-ref_corr_leave$Abs.Correlation),]
+head(ref_corr_leave[, c("Variable", "Correlation")], 16)
+             
+rm("ref_corr_leave")
+options(warn=0)
+```
+
+##  Influence of Age Correlations
+```{r Age Plot, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ref_corr1 <- as.data.frame(cor(referendum.corr1))
+ref_corr_turnout <- ref_corr1[1, ]
+ref_corr_turnout <- gather(data = ref_corr_turnout, key = "Variable", value = "Correlation")
+ref_corr_turnout <- mutate(ref_corr_turnout, Abs.Correlation = abs(Correlation))
+
+age <- referendum[, c(12, 14:19)]
+names(age) <- c( "Leave.Percent", "16.to.24", "25.to.34", "35.to.54", "55.to.64", "65.to.74", "75.plus")
+
+age <- mutate(age, Under.34.Percent = (`16.to.24` + `25.to.34`), Over.55.Percent = (`55.to.64` + `65.to.74` +
+                                                                                      `75.plus`))
+age <- age[, c(1, 8:9)]
+cor_age <- cor(age)
+knitr::kable(cor_age)
+
+ref_corr_turnout_age <- select(filter(ref_corr_turnout, substr(Variable, 1, 3) == "Age"),c(Variable, Correlation))
+names(ref_corr_turnout_age) <- c("Age Group", "Correlation to Turnout")
+knitr::kable(ref_corr_turnout_age)
+
+options(warn=0)
+```
+
+## Influence of Age
+Although not particularly high the correlations indicate that:
+- Higher % of under 35s linked with a lower Leave
+- Higher % of over 55s linked with a higher Leave
+- Higher % of under 35s linked with a lower Turnout
+- Higher % of over 55s linked with a higher Turnout
+
+Taken together these suggest (but don't prove) that the Remain vote may have been adversely affected by a lower turnout in the under 35s. 
+
+## Influence of Education
+There are strong links between higher levels of University education and Remain, and higher levels of education only to 16 and Leave
+```{r Education Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+education <- referendum[, c(12, 26:27)]
+
+education <- gather(data = education, key = "Activity.Group", value = "Activity.Group.Percent", 
+                   Degree.Percent, Formal.Education.to.16.Percent)
+
+ggplot(data = education, aes(x = Activity.Group.Percent, y = Leave.Percent, 
+                            color = Activity.Group)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  facet_grid(cols = vars(Activity.Group))
+
+rm("education")
+options(warn=0)
+```
+
+## Influence of Previous Voting
+Only support for a Nationalist party (mainly UKIP) in the 2015 General Election has a significant link to the Leave Vote.
+```{r Politics Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+politics <- referendum[, c(12, 28:32)]
+names(politics) <- c( "Leave", "Conservative", "Labour", "Lib.Green", "Nationalist", "Other")
+
+ggplot(data = politics, aes(x = Nationalist, y = Leave)) +
+  geom_point(alpha = 0.2, color = "blue") +
+  geom_smooth(method = "lm", formula = y ~ x) 
+
+rm("politics")
+options(warn=0)
+```
+
+## Influence of Ethnicity
+```{r Ethnicity Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+ethnicity <- referendum[, c(12, 33:37)]
+names(ethnicity) <- c( "Leave", "White.Brit", "NonBr.Wh.UKborn", "NonWh.UKborn", "EU.Immig", "RoW.Immig")
+ggpairs(ethnicity)
+
+rm("ethnicity")
+options(warn=0) 
+```
+
+## Influence of Ethnicity2
+- Only high White British ethnicity is positively linked to the Leave vote.
+- Higher levels of EU immigrants in an area is positively linked to the Remain vote
+- Higher levels of Rest of the World immigrants in an area is positively linked to the Remain vote
+This goes completely in the face of the received wisdom that immigration was a key factor in the decision to Leave.
+
+## Influence of Passport Ownership
+Maybe with ease of business travel and holidays in mind, there's a strong link between Passport Ownership and Remain.
+```{r Passport Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+passport <- referendum[, c(12, 41:43)]
+
+ggplot(data = passport, aes(x = Passport.Percent, y = Leave.Percent)) +
+  geom_point(alpha = 0.2, color = "blue") +
+  geom_smooth(method = "lm", formula = y ~ x)
+
+rm("passport")
+options(warn=0)
+```
+
+## Influence of Social Grading
+Higher percentages of AB (Professional & Managerial) grouping is linked to Remain and higher C2 (Skilled manual) is linked to Leave.
+```{r Social Correlations, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+social <- referendum[, c(12, 44, 46)]
+
+social <- gather(data = social, key = "Activity.Group", value = "Activity.Group.Percent", 
+                    AB.Percent, C2.Percent)
+
+ggplot(data = social, aes(x = Activity.Group.Percent, y = Leave.Percent, 
+                             color = Activity.Group)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  facet_grid(rows = vars(Activity.Group))
+
+rm("social")
+options(warn=0)
+```
+
+##Influence of EU Funding
+In reality there's very little link between EU funding and the Leave vote.  Although the numbers suggested a link to Remain this is due to a few outlying points generally indicating funding of large university projects. 
+```{r EU Funding, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+misc1 <- referendum[, c(3, 12, 23, 38:40)]
+
+ggplot(data = misc1, aes(x = Total.EU.Funding.Millions, y = Leave.Percent, color = Student.Percent)) +
+  scale_colour_gradient2(low="#22FF00", mid="white", high="#FF0000", midpoint=8.8) +
+  geom_point(alpha = 0.8) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(title = "Leave Percentage in Local Authorities against EU Funding (M GBP)")
+
+rm("misc1")
+options(warn=0)
+```
+
+## Root Mean Square Errors of Predictive Models on Test Data
+
+
+|  Model Type                   | RMSE | Notes                                         | 
+|:------------------------------|-----------|-----------------------------------------------|
+| Linear Regression             | 2.344537  | Model with 12 variables                       |
+| CART                          | 4.16874   | The model only gives 7 different outcomes     |
+| Random Forest                 | 3.201406  | 5 variables with more than 10% IncMSE         |
+| Polynomial Regression         | 2.240775  | Model with 10 linear and 2 2nd order variables|
+| Ridge Regression              | 2.629288  | 14 additional features added                  |
+| Lasso Regression              | 2.483642  | 16 features used in model                     |
+| Elastic Net Regression        | 2.305884  | 31 features used in model                     |
+
+##  Best Model
+Although the Polynomial Regression model gave the best result on this single split of data, I tested this model and also the Elastic Net model across the full set of data.  This showed that the Polynomial model had an RMSE of 2.254834 and the Elastic Net model had an RMSE of 2.204074.  
+
+Therefore the Elastic Net model is probably the best general predictor model.
+
+NB These models just create the best fit possible to the data - they don't claim to have found the root causes.
+
+##  Elastic Net Model Coefficients
+```{r Elnet2, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+k_elnet1 <- read.csv("k_elnet1.csv")
+
+k_elnet1[c(1:16), c(2:3)]
+
+options(warn=0)
+```
+
+##  Elastic Net Model Coefficients (cont)
+```{r Elnet3, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+k_elnet1[c(17:32), c(2:3)]
+
+options(warn=0)
+```
+
+##  Error Analysis of the model
+```{r Elnet errors, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+elnet_leave <- read.csv("elnet_leave.csv")
+elnet_leave <- elnet_leave[,c(2:5)]
+names(elnet_leave) <- c("LA.Code", "LA.Name", "Actual.Leave.Percent", "Error")
+elnet_leave <- mutate(elnet_leave, Predicted.Leave.Percent = Error + Actual.Leave.Percent)
+
+ggplot(elnet_leave, aes(x = Actual.Leave.Percent, y = Predicted.Leave.Percent)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1)
+
+options(warn=0)
+```
+
+##  Model Error Map
+```{r Error Mqp, echo=FALSE, message=FALSE}
+options(warn=-1)
+
+coord_leave <- read.csv("elnet_error_coord.csv")
+
+ggplot(data = coord_leave, aes(x = Easting, y = Northing, color = Elastic.Net.Error)) +
+  scale_colour_gradient2(low="#22FF00", mid="white", high="#FF0000", midpoint=0) +
+  geom_point() +
+  labs(title = "Map of Prediction Errors using Elastic Net model") +
+  theme(panel.background=element_rect(fill="lightblue"))
+
+rm("coord_leave")
+options(warn=0)
+```
+
+##  Model Errors
+
+Neither graphic shows any significant pattern of error distribution.  However on the geographical plot there are a few potential clusterings of under predictions and over predictions which might lead to a further refinement opportunity.  
+
+##  Conclusions - "Sample Bias"
+The dataset used is the data for everyone in a Local Authority.  However democracy means that people had the right not to vote in the referendum.  
+
+Certain groupings might have been more or less likely to vote in a particular area meaning that there could be inbuilt errors in the dataset with a potential to mislead the models and the correlations.  This means that we can't be as definite in our conclusions as we'd like.
+
+##  Potential "Sample Bias"
+
+Higher percentages of certain groupings within a local authority have patterns which are linked to higher or lower turnout.  The key pairings within the data are as follows:
+
+|  Lower Turnout Percent        | Higher Turnout Percent        | 
+|:------------------------------|-------------------------------|
+| Age 35 and under              | Age 55 and over               |
+| Labour Party support          | Conservative Party support    |
+| Unemployed                    | Self Employed                 |
+| Non White British             | White British                 |  
+
+Eg this might indicate a higher percentage of older people voting than younger people.
+
+##  As Expected
+
+- Higher education levels correspond to a lower Leave vote and lower levels to higher Leave
+- The higher the percentage of passport holders the lower the Leave vote
+- Larger AB social groupings lead to lower Leave votes
+
+
+##  Contrary to Expectations
+- Higher unemployment had virtually no correlation to higher Leave
+- Higher levels of immigrants did not correlate to higher Leave - in fact there was a reasonable negative correlation.  Although not causal this correlation suggests that the more immigrants there are in an area the less need there is to vote against immigration (pro-Leave).  (Maybe these higher numbers of immigrants mean that more people see a "personal face" to the issue).
+- Higher levels of EU funding locally had little correlation to higher Remain 
+
+##  Recommendations
+The referendum was a once-off dataset which would probably not give optimal information for the future.  A second new referendum would be different due to:  
+
+- 3 years of deaths and 3 years of teenagers reaching voting age changing the data
+- Implications of Leave better understood now (if not fully resolved)
+- More understanding of effect of certain groups not voting
+
+The Remain campaign needed to target higher turnout in younger voters.
+
+##  Further Research
+
+- Extend the study to the 2019 EU Elections
+- Investigate any Exit Polls to understand Sample Bias
+- Investigate localised geographic clustering in model errors
+
